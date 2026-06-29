@@ -38,9 +38,9 @@ describe('resolveReference', () => {
     expect(r.ok && r.ref.id).toBe('object:task:2');
   });
 
-  it('无法判定 → 要求澄清', () => {
+  it('无指代线索 → 要求澄清', () => {
     const { snap, cs } = setup();
-    const r = resolveReference('那个蓝色的呢', snap, cs);
+    const r = resolveReference('我拿不定主意', snap, cs);
     expect(r.ok).toBe(false);
   });
 });
