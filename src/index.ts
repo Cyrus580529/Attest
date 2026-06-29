@@ -31,6 +31,12 @@ export type { RefResolution } from './core/refResolver';
 export { READ_LOOP_TOOLS, WRITE_TOOLS, ACT_TOOLS, REF_TOOL_KINDS, WRITE_REF_KINDS } from './core/tools';
 export { serializeSnapshot } from './core/serialize';
 
+// core 4a：跨回合引用 + 长程追踪
+export { CandidateSet, candidatesFromSnapshot } from './core/candidateSet';
+export { resolveReference } from './core/referenceResolver';
+export type { Reference } from './core/referenceResolver';
+export { PlanRunner } from './core/planRunner';
+
 // honesty 诚实层
 export type { Intent, Evidence, LedgerEntry, Outcome, ConfirmFn } from './honesty/types';
 export { diffSnapshots } from './honesty/verifier';
