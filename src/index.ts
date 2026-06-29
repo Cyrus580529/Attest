@@ -37,6 +37,11 @@ export { resolveReference } from './core/referenceResolver';
 export type { Reference } from './core/referenceResolver';
 export { PlanRunner } from './core/planRunner';
 
+// memory 4b：页面记忆
+export { pageSignature, goalKey, memoryKey } from './memory/pageSignature';
+export { PageMemory, recordRef, resolveRecordedRef } from './memory/pageMemory';
+export type { RecordedRef, RecordedStep, MemoryEntry } from './memory/pageMemory';
+
 // honesty 诚实层
 export type { Intent, Evidence, LedgerEntry, Outcome, ConfirmFn } from './honesty/types';
 export { diffSnapshots } from './honesty/verifier';
