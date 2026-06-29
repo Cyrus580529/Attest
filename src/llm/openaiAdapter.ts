@@ -62,7 +62,8 @@ export function createOpenAiAdapter(options: OpenAiAdapterOptions): LlmAdapter {
         }),
       });
       if (!res.ok) {
-        throw new Error(`OpenAI request failed: ${res.status}`);
+        const body = await res.text().catch(() => '');
+        throw new Error(`OpenAI request failed: ${res.status} ${body}`.trim());
       }
       const data = (await res.json()) as OpenAiResponse;
       const message = data.choices[0]?.message ?? { content: '' };
