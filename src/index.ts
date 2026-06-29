@@ -28,8 +28,15 @@ export { createAgent } from './core/loop';
 export type { AgentStep, AgentOptions } from './core/loop';
 export { resolveRef } from './core/refResolver';
 export type { RefResolution } from './core/refResolver';
-export { READ_LOOP_TOOLS, REF_TOOL_KINDS } from './core/tools';
+export { READ_LOOP_TOOLS, WRITE_TOOLS, ACT_TOOLS, REF_TOOL_KINDS, WRITE_REF_KINDS } from './core/tools';
 export { serializeSnapshot } from './core/serialize';
+
+// honesty 诚实层
+export type { Intent, Evidence, LedgerEntry, Outcome, ConfirmFn } from './honesty/types';
+export { diffSnapshots } from './honesty/verifier';
+export { actionRisk, isHighRisk } from './honesty/riskPolicy';
+export { Ledger, computeOutcome } from './honesty/ledger';
+export { guardFinish } from './honesty/narrationGuard';
 
 // testing 双适配器（供库使用者写测试）
 export { FakeLlmAdapter, toolCallTurn, textTurn } from './testing/fakeLlmAdapter';
