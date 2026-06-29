@@ -9,12 +9,15 @@ import { diffSnapshots } from '../honesty/verifier';
 import { isHighRisk } from '../honesty/riskPolicy';
 import { Ledger } from '../honesty/ledger';
 import { guardFinish } from '../honesty/narrationGuard';
+import { memoryKey } from '../memory/pageSignature';
+import { PageMemory, recordRef, resolveRecordedRef, type RecordedStep } from '../memory/pageMemory';
 
 export type AgentStep =
   | { type: 'observation'; tool: string; refId?: string; result: string }
   | { type: 'action'; tool: string; refId: string; verified: boolean; evidence: string[] }
   | { type: 'held'; tool: string; refId: string; intent: Intent }
   | { type: 'cancelled'; tool: string; refId: string; reason: string }
+  | { type: 'replay'; tool: string; refId?: string }
   | { type: 'error'; tool: string; refId?: string; error: string }
   | { type: 'finish'; answer: string; outcome: Outcome; ledger: LedgerEntry[] };
 
@@ -25,6 +28,7 @@ export interface AgentOptions {
   readOnly?: boolean;
   maxSteps?: number;
   systemPrompt?: string;
+  memory?: PageMemory;
 }
 
 const DEFAULT_MAX_STEPS = 12;
@@ -42,6 +46,7 @@ function defaultSystemPrompt(): string {
 interface CallResult {
   steps: AgentStep[];
   toolResult: string;
+  recorded?: RecordedStep;
 }
 
 async function processCall(
@@ -51,9 +56,10 @@ async function processCall(
   confirm: ConfirmFn,
 ): Promise<CallResult> {
   const name = call.name;
+  const before = host.snapshot();
 
   if (name === 'observePage') {
-    const result = serializeSnapshot(host.snapshot());
+    const result = serializeSnapshot(before);
     ledger.record({ kind: 'observe', tool: name, detail: result });
     return { steps: [{ type: 'observation', tool: name, result }], toolResult: result };
   }
@@ -61,7 +67,7 @@ async function processCall(
   const readKind: RefKind | undefined = REF_TOOL_KINDS[name];
   if (readKind) {
     const refId = String(call.arguments.ref ?? '');
-    const res = resolveRef(host.snapshot(), refId, readKind);
+    const res = resolveRef(before, refId, readKind);
     if (!res.ok) {
       ledger.record({ kind: 'error', tool: name, detail: res.error });
       return { steps: [{ type: 'error', tool: name, refId, error: res.error }], toolResult: `ERROR: ${res.error}` };
@@ -74,13 +80,17 @@ async function processCall(
       result = serializeSnapshot(r.snapshot);
     }
     ledger.record({ kind: 'observe', tool: name, detail: result });
-    return { steps: [{ type: 'observation', tool: name, refId, result }], toolResult: result };
+    return {
+      steps: [{ type: 'observation', tool: name, refId, result }],
+      toolResult: result,
+      recorded: { tool: name, ref: recordRef(before, res.ref) },
+    };
   }
 
   const writeKind: RefKind | undefined = WRITE_REF_KINDS[name];
   if (writeKind) {
     const refId = String(call.arguments.ref ?? '');
-    const res = resolveRef(host.snapshot(), refId, writeKind);
+    const res = resolveRef(before, refId, writeKind);
     if (!res.ok) {
       ledger.record({ kind: 'error', tool: name, detail: res.error });
       return { steps: [{ type: 'error', tool: name, refId, error: res.error }], toolResult: `ERROR: ${res.error}` };
@@ -88,8 +98,8 @@ async function processCall(
 
     const steps: AgentStep[] = [];
 
-    if (name === 'invokeAction' && isHighRisk(host.snapshot(), refId)) {
-      const action = host.snapshot().actions.find((a) => a.ref.id === refId);
+    if (name === 'invokeAction' && isHighRisk(before, refId)) {
+      const action = before.actions.find((a) => a.ref.id === refId);
       const intent: Intent = {
         actionRef: refId,
         label: action?.label ?? refId,
@@ -106,22 +116,68 @@ async function processCall(
       }
     }
 
-    const before = host.snapshot();
-    const result =
-      name === 'setControl'
-        ? await host.setControl(res.ref, String(call.arguments.value ?? ''))
-        : await host.invokeAction(res.ref);
+    const value = name === 'setControl' ? String(call.arguments.value ?? '') : undefined;
+    const result = name === 'setControl' ? await host.setControl(res.ref, value ?? '') : await host.invokeAction(res.ref);
     const evidence = diffSnapshots(before, result.snapshot);
     ledger.record({ kind: 'write', tool: name, refId, verified: evidence.changed, evidence: evidence.details });
     steps.push({ type: 'action', tool: name, refId, verified: evidence.changed, evidence: evidence.details });
     const toolResult = evidence.changed
       ? `done; 证据: ${evidence.details.join('; ')}`
       : '已执行，但未检测到可观察变化（未验证）。';
-    return { steps, toolResult };
+    return { steps, toolResult, recorded: { tool: name, ref: recordRef(before, res.ref), value } };
   }
 
   ledger.record({ kind: 'error', tool: name, detail: `unknown tool "${name}"` });
   return { steps: [{ type: 'error', tool: name, error: `unknown tool "${name}"` }], toolResult: 'ERROR: unknown tool' };
+}
+
+function finishStep(answer: string, ledger: Ledger): AgentStep {
+  const guarded = guardFinish(answer.trim(), ledger.entries);
+  return { type: 'finish', answer: guarded.answer, outcome: guarded.outcome, ledger: ledger.toJSON() };
+}
+
+async function* attemptReplay(
+  steps: RecordedStep[],
+  host: HostAdapter,
+  ledger: Ledger,
+  confirm: ConfirmFn,
+): AsyncGenerator<AgentStep, { done: boolean }> {
+  for (const step of steps) {
+    if (step.tool === 'finish') {
+      yield finishStep(step.answer ?? '', ledger);
+      return { done: true };
+    }
+
+    let refId: string | undefined;
+    if (step.ref) {
+      const ref = resolveRecordedRef(host.snapshot(), step.ref);
+      if (!ref) return { done: false };
+      refId = ref.id;
+    }
+
+    yield { type: 'replay', tool: step.tool, refId };
+
+    const call: LlmToolCall = {
+      id: `replay_${step.tool}`,
+      name: step.tool,
+      arguments: {
+        ...(refId !== undefined ? { ref: refId } : {}),
+        ...(step.value !== undefined ? { value: step.value } : {}),
+      },
+    };
+    const { steps: produced } = await processCall(call, host, ledger, confirm);
+    for (const s of produced) yield s;
+
+    if (produced.some((s) => s.type === 'error')) return { done: false };
+    if (produced.some((s) => s.type === 'action' && !s.verified)) return { done: false };
+    if (produced.some((s) => s.type === 'cancelled')) {
+      yield finishStep('', ledger);
+      return { done: true };
+    }
+  }
+
+  yield finishStep('', ledger);
+  return { done: true };
 }
 
 export function createAgent(options: AgentOptions) {
@@ -130,9 +186,21 @@ export function createAgent(options: AgentOptions) {
   const systemPrompt = options.systemPrompt ?? defaultSystemPrompt();
   const confirm = options.confirm ?? DENY;
   const tools = options.readOnly ? READ_LOOP_TOOLS : ACT_TOOLS;
+  const memory = options.memory;
 
   async function* run(userMessage: string): AsyncGenerator<AgentStep> {
     const ledger = new Ledger();
+    const recorded: RecordedStep[] = [];
+    const key = memory ? memoryKey(host.snapshot(), userMessage) : '';
+
+    if (memory) {
+      const entry = memory.lookup(key);
+      if (entry) {
+        const result = yield* attemptReplay(entry.steps, host, ledger, confirm);
+        if (result.done) return;
+      }
+    }
+
     const messages: LlmMessage[] = [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userMessage },
@@ -142,8 +210,11 @@ export function createAgent(options: AgentOptions) {
       const turn = await llm.step(messages, tools);
 
       if (turn.toolCalls.length === 0) {
-        const guarded = guardFinish(turn.content.trim(), ledger.entries);
-        yield { type: 'finish', answer: guarded.answer, outcome: guarded.outcome, ledger: ledger.toJSON() };
+        const step = finishStep(turn.content, ledger);
+        if (memory && step.type === 'finish' && step.outcome === 'completed') {
+          memory.record(key, [...recorded, { tool: 'finish', answer: turn.content.trim() }]);
+        }
+        yield step;
         return;
       }
 
@@ -152,14 +223,19 @@ export function createAgent(options: AgentOptions) {
       let finished = false;
       for (const call of turn.toolCalls) {
         if (call.name === 'finish') {
-          const guarded = guardFinish(String(call.arguments.answer ?? '').trim(), ledger.entries);
-          yield { type: 'finish', answer: guarded.answer, outcome: guarded.outcome, ledger: ledger.toJSON() };
+          const answer = String(call.arguments.answer ?? '').trim();
+          const step = finishStep(answer, ledger);
+          if (memory && step.type === 'finish' && step.outcome === 'completed') {
+            memory.record(key, [...recorded, { tool: 'finish', answer }]);
+          }
+          yield step;
           finished = true;
           break;
         }
-        const { steps, toolResult } = await processCall(call, host, ledger, confirm);
-        for (const step of steps) yield step;
-        messages.push({ role: 'tool', toolCallId: call.id, content: toolResult });
+        const result = await processCall(call, host, ledger, confirm);
+        for (const s of result.steps) yield s;
+        if (result.recorded) recorded.push(result.recorded);
+        messages.push({ role: 'tool', toolCallId: call.id, content: result.toolResult });
       }
       if (finished) return;
     }
