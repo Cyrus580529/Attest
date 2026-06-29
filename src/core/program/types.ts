@@ -3,9 +3,9 @@
  * harness 逐节点对实时快照校验+求值——不引入新信任模型，只编排被严格把关的原语。
  */
 
+/** 对象过滤。只用契约真实暴露的字段：type（精确）、labelContains（label 子串）。 */
 export interface Query {
   type?: string;
-  status?: string;
   labelContains?: string;
 }
 
@@ -14,17 +14,14 @@ export interface Cond {
   contains: string;
 }
 
-/** read 的目标：绑定变量（"$t"）或具体 surface 名。 */
-export type ReadTarget = string | { surface: string };
-
 export type Node =
   | { op: 'observe' }
   | { op: 'forEach'; query: Query; as: string; do: Node[] }
   | { op: 'if'; cond: Cond; then: Node[]; else?: Node[] }
-  | { op: 'open'; on: string }
-  | { op: 'read'; on: ReadTarget }
-  | { op: 'setControl'; on: { control: string }; value: string }
-  | { op: 'invoke'; action: string }
+  | { op: 'open'; on: string } // "$var"（forEach 绑定）或字面 object ref id
+  | { op: 'read'; surface: string } // surface 名
+  | { op: 'setControl'; on: { control: string }; value: string } // control 名
+  | { op: 'invoke'; action: string } // action 名
   | { op: 'finish'; answer: string };
 
 export interface Program {
@@ -90,11 +87,7 @@ function validateNode(node: unknown, path: string, errors: string[]): void {
       need(typeof node.on === 'string' && node.on.length > 0, '缺 on');
       break;
     case 'read':
-      need(
-        (typeof node.on === 'string' && node.on.length > 0) ||
-          (isObject(node.on) && typeof (node.on as { surface?: unknown }).surface === 'string'),
-        '缺 on（"$var" 或 {surface}）',
-      );
+      need(typeof node.surface === 'string' && node.surface.length > 0, '缺 surface');
       break;
     case 'setControl':
       need(isObject(node.on) && typeof (node.on as { control?: unknown }).control === 'string', '缺 on{control}');
