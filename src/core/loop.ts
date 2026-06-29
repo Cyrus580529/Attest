@@ -97,6 +97,7 @@ async function processCall(
     }
 
     const steps: AgentStep[] = [];
+    let confirmed = false;
 
     if (name === 'invokeAction' && isHighRisk(before, refId)) {
       const action = before.actions.find((a) => a.ref.id === refId);
@@ -114,6 +115,7 @@ async function processCall(
         steps.push({ type: 'cancelled', tool: name, refId, reason: 'user declined' });
         return { steps, toolResult: 'ACTION CANCELLED: 用户拒绝了该高风险操作。' };
       }
+      confirmed = true;
     }
 
     const value = name === 'setControl' ? String(call.arguments.value ?? '') : undefined;
@@ -121,9 +123,10 @@ async function processCall(
     const evidence = diffSnapshots(before, result.snapshot);
     ledger.record({ kind: 'write', tool: name, refId, verified: evidence.changed, evidence: evidence.details });
     steps.push({ type: 'action', tool: name, refId, verified: evidence.changed, evidence: evidence.details });
-    const toolResult = evidence.changed
+    const base = evidence.changed
       ? `done; 证据: ${evidence.details.join('; ')}`
       : '已执行，但未检测到可观察变化（未验证）。';
+    const toolResult = confirmed ? `（此高风险操作已由用户确认后才执行）${base}` : base;
     return { steps, toolResult, recorded: { tool: name, ref: recordRef(before, res.ref), value } };
   }
 
