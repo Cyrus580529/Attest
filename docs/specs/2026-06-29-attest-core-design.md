@@ -228,7 +228,7 @@ Attest/
 
 ## 14. 开放问题 / 风险
 
-1. **包名 `attest` 可能在 npm 已被占用**（如 @arktype/attest）——发布前需查，可能用 scope（`@<user>/attest`）或变体。仓库/品牌名仍用 Attest。
+1. ~~包名 `attest` 可能在 npm 已被占用~~ **已查并定案（2026-06-29）**：裸名 `attest` 被一个 2016 年废弃的无障碍测试库占用，且 "attest" 在 JS 生态语义上被供应链溯源/证明（`@actions/attest`、npm provenance 等）严重占据。**决定：品牌/仓库名保留 Attest，npm 包名用 `attest-agent`（裸名空闲，`-agent` 后缀与"供应链 attestation"区分开）。**
 2. planRunner 的长程编排是最难的一块，需先 brainstorm 切片再动引擎。
 3. verifier 证据类型的取舍需在真实 LLM 回合中迭代，不能纸面定死。
 4. 示范应用要足够"非 SkillFlow"，以证明通用性，但又不能大到喧宾夺主。
