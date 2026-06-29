@@ -3,6 +3,9 @@
 //   $env:ATTEST_API_KEY="可用key"; $env:ATTEST_BASE_URL="https://www.kamiapi.top/v1"; $env:ATTEST_MODEL="gpt-5.5"; npm run repl
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
 
+// happy-dom 注册会用"浏览器式 fetch"（强制同源/CORS）覆盖全局 fetch，
+// 会拦截跨域的 LLM 请求。先抓住 Node 原生 fetch（无 CORS），专给 LLM 调用用。
+const nodeFetch = globalThis.fetch;
 GlobalRegistrator.register();
 
 import { readFileSync } from 'node:fs';
@@ -67,7 +70,7 @@ function show(s: Record<string, unknown>): void {
 
 function makeAgent() {
   return createAgent({
-    llm: createOpenAiAdapter({ apiKey: key, baseUrl, model }),
+    llm: createOpenAiAdapter({ apiKey: key, baseUrl, model, fetchImpl: nodeFetch }),
     host: createDomHostAdapter({ getUrl: () => '/board' }),
     memory,
     confirm: async (intent) => {
