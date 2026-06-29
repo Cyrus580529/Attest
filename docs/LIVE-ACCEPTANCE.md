@@ -1,0 +1,23 @@
+# Live 验收闸（真实 LLM 回合）
+
+> 自动测试用 FakeLlmAdapter，证明不了对话质量。交付切片 2 前必须用真实 OpenAI key 跑一次。
+
+## 前置
+- 环境变量 OPENAI_API_KEY。
+- 一个含 data-agent-* 的真实页面（或 examples 里的示范页，切片 4 提供）。
+
+## 步骤
+1. 用 createOpenAiAdapter({ apiKey: process.env.OPENAI_API_KEY }) + createDomHostAdapter() 组装 createAgent。
+2. 至少发以下消息，逐条记录"用户输入 → 工具动作序列 → 页面结果 → finish 终答"：
+   - 打招呼/闲聊（应自然 finish，不乱调工具）
+   - 只读总结（"这页有什么"——应 observePage 后如实总结）
+   - 跨页读取（"看第一个的详情"——应 openObject → readSurface → 综合）
+   - 引用不存在的东西（应得到 error 并要求澄清，不编造 ref）
+
+## 通过标准（写进报告）
+- finish 的 outcome 为 completed 且不是靠 maxSteps 兜底的 failed。
+- 工具调用的 ref 全部来自 observePage 结果，无编造。
+- 终答与工具轨迹一致，无"工具失败却声称成功"。
+- 语言自然、不机械、不跨域串台。
+
+任一不满足 → 切片 2 视为未验收，记录现象再修。
