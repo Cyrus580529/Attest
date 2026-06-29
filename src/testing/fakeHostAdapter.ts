@@ -27,6 +27,17 @@ export class FakeHostAdapter implements HostAdapter {
     return this.transition('navigate', ref);
   }
 
+  setControl(ref: Ref, value: string): Promise<HostResult> {
+    this.log.push({ kind: `setControl=${value}`, refId: ref.id });
+    const next = this.transitions.get(ref.id);
+    if (next) this.current = next;
+    return Promise.resolve({ ok: true, snapshot: this.current });
+  }
+
+  invokeAction(ref: Ref): Promise<HostResult> {
+    return this.transition('invoke', ref);
+  }
+
   private transition(kind: string, ref: Ref): Promise<HostResult> {
     this.log.push({ kind, refId: ref.id });
     const next = this.transitions.get(ref.id);

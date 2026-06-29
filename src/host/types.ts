@@ -11,4 +11,6 @@ export interface HostAdapter {
   readSurface(ref: Ref): string;
   openObject(ref: Ref): Promise<HostResult>;
   navigate(ref: Ref): Promise<HostResult>;
+  setControl(ref: Ref, value: string): Promise<HostResult>;
+  invokeAction(ref: Ref): Promise<HostResult>;
 }

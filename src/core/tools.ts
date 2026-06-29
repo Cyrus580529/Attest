@@ -34,3 +34,27 @@ export const REF_TOOL_KINDS: Record<string, RefKind> = {
   openObject: 'object',
   navigate: 'object',
 };
+
+export const WRITE_TOOLS: ToolSchema[] = [
+  {
+    name: 'setControl',
+    description: '设置一个控件的值。',
+    parameters: {
+      type: 'object',
+      properties: {
+        ref: { type: 'string', description: 'control 的 ref id' },
+        value: { type: 'string', description: '要设置的值' },
+      },
+      required: ['ref', 'value'],
+      additionalProperties: false,
+    },
+  },
+  { name: 'invokeAction', description: '触发一个动作（高危需确认）。', parameters: refParam('action 的 ref id') },
+];
+
+export const WRITE_REF_KINDS: Record<string, RefKind> = {
+  setControl: 'control',
+  invokeAction: 'action',
+};
+
+export const ACT_TOOLS: ToolSchema[] = [...READ_LOOP_TOOLS, ...WRITE_TOOLS];

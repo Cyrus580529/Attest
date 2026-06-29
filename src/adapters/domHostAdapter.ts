@@ -42,5 +42,18 @@ export function createDomHostAdapter(options: DomHostAdapterOptions = {}): HostA
     navigate(ref: Ref): Promise<HostResult> {
       return Promise.resolve(clickRef(ref));
     },
+    setControl(ref: Ref, value: string): Promise<HostResult> {
+      const el = elements.get(ref.id);
+      if (!el) return Promise.resolve({ ok: false, snapshot: current, note: `element for ${ref.id} not found` });
+      if ('value' in el) {
+        (el as HTMLInputElement).value = value;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      return Promise.resolve({ ok: true, snapshot: refresh() });
+    },
+    invokeAction(ref: Ref): Promise<HostResult> {
+      return Promise.resolve(clickRef(ref));
+    },
   };
 }
