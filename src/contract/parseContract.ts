@@ -1,4 +1,11 @@
-import type { ActionNode, ObjectNode, PageSnapshot, Risk } from '../types';
+import type {
+  ActionNode,
+  ControlNode,
+  ObjectNode,
+  PageSnapshot,
+  Risk,
+  SurfaceNode,
+} from '../types';
 import { RefMinter } from './refs';
 
 function cleanText(raw: string | null | undefined): string {
@@ -36,5 +43,30 @@ export function parseContract(root: ParentNode, url: string): PageSnapshot {
     });
   }
 
-  return { url, objects, actions, controls: [], surfaces: [] };
+  const controls: ControlNode[] = [];
+  for (const el of root.querySelectorAll('[data-agent-control]')) {
+    const name = el.getAttribute('data-agent-control') ?? '';
+    if (!name) continue;
+    const hasValue = 'value' in el;
+    const value = hasValue ? String((el as { value: unknown }).value) : null;
+    controls.push({
+      ref: minter.mint('control', name),
+      name,
+      label: hasValue ? cleanText(el.getAttribute('aria-label')) : cleanText(el.textContent),
+      value,
+    });
+  }
+
+  const surfaces: SurfaceNode[] = [];
+  for (const el of root.querySelectorAll('[data-agent-surface]')) {
+    const name = el.getAttribute('data-agent-surface') ?? '';
+    if (!name) continue;
+    surfaces.push({
+      ref: minter.mint('surface', name),
+      name,
+      text: cleanText(el.textContent),
+    });
+  }
+
+  return { url, objects, actions, controls, surfaces };
 }

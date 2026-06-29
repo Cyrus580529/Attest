@@ -42,3 +42,34 @@ describe('parseContract — actions', () => {
     expect(snap.actions[0]?.risk).toBe('high');
   });
 });
+
+describe('parseContract — controls', () => {
+  it('input 控件读取 value', () => {
+    document.body.innerHTML = `<input data-agent-control="bidAmount" value="200" />`;
+    const snap = parseContract(document.body, 'u');
+    expect(snap.controls).toEqual([
+      { ref: { kind: 'control', id: 'control:bidAmount' }, name: 'bidAmount', label: '', value: '200' },
+    ]);
+  });
+
+  it('非表单元素控件 value 为 null，label 取文本', () => {
+    document.body.innerHTML = `<div data-agent-control="priority">高</div>`;
+    const snap = parseContract(document.body, 'u');
+    expect(snap.controls[0]).toEqual({
+      ref: { kind: 'control', id: 'control:priority' },
+      name: 'priority',
+      label: '高',
+      value: null,
+    });
+  });
+});
+
+describe('parseContract — surfaces', () => {
+  it('surface 读取可读文本', () => {
+    document.body.innerHTML = `<section data-agent-surface="detail"> 任务  详情 </section>`;
+    const snap = parseContract(document.body, 'u');
+    expect(snap.surfaces).toEqual([
+      { ref: { kind: 'surface', id: 'surface:detail' }, name: 'detail', text: '任务 详情' },
+    ]);
+  });
+});
