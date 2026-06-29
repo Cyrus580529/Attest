@@ -1,0 +1,21 @@
+{
+  "name": "attest-agent",
+  "version": "0.0.0",
+  "description": "Trustworthy, self-verifying web agent core — proposes actions, the harness validates real page refs, every action leaves auditable evidence.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "happy-dom": "^14.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.4.0"
+  }
+}
