@@ -70,3 +70,27 @@ export function parseContract(root: ParentNode, url: string): PageSnapshot {
 
   return { url, objects, actions, controls, surfaces };
 }
+
+export interface ContractParseResult {
+  snapshot: PageSnapshot;
+  elements: Map<string, Element>;
+}
+
+export function parseContractWithElements(root: ParentNode, url: string): ContractParseResult {
+  const snapshot = parseContract(root, url);
+  const elements = new Map<string, Element>();
+
+  const bind = (selector: string, nodes: readonly { ref: { id: string } }[]) => {
+    const els = Array.from(root.querySelectorAll(selector));
+    nodes.forEach((node, i) => {
+      const el = els[i];
+      if (el && !elements.has(node.ref.id)) elements.set(node.ref.id, el);
+    });
+  };
+  bind('[data-agent-object]', snapshot.objects);
+  bind('[data-agent-action]', snapshot.actions);
+  bind('[data-agent-control]', snapshot.controls);
+  bind('[data-agent-surface]', snapshot.surfaces);
+
+  return { snapshot, elements };
+}
