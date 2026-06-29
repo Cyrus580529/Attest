@@ -26,3 +26,19 @@ describe('parseContract — objects', () => {
     expect(snap.objects).toEqual([]);
   });
 });
+
+describe('parseContract — actions', () => {
+  it('解析 action，默认 risk=low', () => {
+    document.body.innerHTML = `<button data-agent-action="apply">申请</button>`;
+    const snap = parseContract(document.body, 'u');
+    expect(snap.actions).toEqual([
+      { ref: { kind: 'action', id: 'action:apply' }, name: 'apply', label: '申请', risk: 'low' },
+    ]);
+  });
+
+  it('data-agent-risk="high" 标记高危动作', () => {
+    document.body.innerHTML = `<button data-agent-action="redeem" data-agent-risk="high">兑换</button>`;
+    const snap = parseContract(document.body, 'u');
+    expect(snap.actions[0]?.risk).toBe('high');
+  });
+});

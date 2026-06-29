@@ -1,4 +1,4 @@
-import type { ObjectNode, PageSnapshot } from '../types';
+import type { ActionNode, ObjectNode, PageSnapshot, Risk } from '../types';
 import { RefMinter } from './refs';
 
 function cleanText(raw: string | null | undefined): string {
@@ -23,5 +23,18 @@ export function parseContract(root: ParentNode, url: string): PageSnapshot {
     });
   }
 
-  return { url, objects, actions: [], controls: [], surfaces: [] };
+  const actions: ActionNode[] = [];
+  for (const el of root.querySelectorAll('[data-agent-action]')) {
+    const name = el.getAttribute('data-agent-action') ?? '';
+    if (!name) continue;
+    const risk: Risk = el.getAttribute('data-agent-risk') === 'high' ? 'high' : 'low';
+    actions.push({
+      ref: minter.mint('action', name),
+      name,
+      label: cleanText(el.textContent),
+      risk,
+    });
+  }
+
+  return { url, objects, actions, controls: [], surfaces: [] };
 }
