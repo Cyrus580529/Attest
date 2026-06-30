@@ -1,7 +1,7 @@
 import type { RefKind } from '../types';
 import type { LlmAdapter, LlmMessage, LlmToolCall } from '../llm/types';
 import type { HostAdapter } from '../host/types';
-import type { ConfirmFn, Intent, LedgerEntry, Outcome } from '../honesty/types';
+import type { ConfirmFn, Intent } from '../honesty/types';
 import { READ_LOOP_TOOLS, ACT_TOOLS, PROGRAM_ACT_TOOLS, FINISH_TOOL, REF_TOOL_KINDS, WRITE_REF_KINDS } from './tools';
 import { resolveRef } from './refResolver';
 import { serializeSnapshot } from './serialize';
@@ -14,8 +14,9 @@ import { Ledger } from '../honesty/ledger';
 import { guardFinish } from '../honesty/narrationGuard';
 import { memoryKey, pageSignature } from '../memory/pageSignature';
 import { PageMemory, recordRef, resolveRecordedRef, type RecordedStep } from '../memory/pageMemory';
-import { RecipeBook, type Recipe } from '../memory/recipeBook';
+import { RecipeBook } from '../memory/recipeBook';
 import { defaultSystemPrompt, programSystemPrompt } from './prompts';
+import { finishStep, factualLedgerSummary, formatRecipes, programFinish } from './finish';
 
 export type { AgentStep } from './loopTypes';
 import type { AgentStep } from './loopTypes';
@@ -128,33 +129,6 @@ async function processCall(
   return { steps: [{ type: 'error', tool: name, error: `unknown tool "${name}"` }], toolResult: 'ERROR: unknown tool' };
 }
 
-/** 从证据账本拼出“真实发生了什么”的事实陈述，喂给复盘回合（不可被模型篡改）。 */
-function factualLedgerSummary(entries: readonly LedgerEntry[]): string {
-  const opens = entries.filter((e) => e.kind === 'observe' && e.tool === 'openObject').length;
-  const verified = entries.filter((e) => e.kind === 'write' && e.verified).length;
-  const unverified = entries.filter((e) => e.kind === 'write' && !e.verified).length;
-  const cancelled = entries.filter((e) => e.kind === 'grant' && !e.approved).length;
-  const lines: string[] = [];
-  if (opens > 0) lines.push(`打开/查看了 ${opens} 个对象`);
-  if (verified > 0) lines.push(`成功执行并验证了 ${verified} 个动作`);
-  if (cancelled > 0) lines.push(`有 ${cancelled} 个高危动作被用户取消、未执行`);
-  if (unverified > 0) lines.push(`有 ${unverified} 个动作执行后未检测到页面变化（未验证）`);
-  return lines.length > 0 ? lines.join('；') : '没有执行任何动作';
-}
-
-/** 把召回的配方拼成给模型的先验块：目标标签 + 可再发的紧凑 JSON 程序（吻合与否由模型判断）。 */
-function formatRecipes(recipes: Recipe[]): string {
-  const blocks = recipes.map(
-    (r, i) => `配方${i + 1}（曾用于「${r.goal}」）：\n${JSON.stringify(r.program)}`,
-  );
-  return `本页面上，以下程序曾被验证成功——可参考、改写或弃用，请自行判断是否吻合当前任务：\n${blocks.join('\n\n')}`;
-}
-
-function finishStep(answer: string, ledger: Ledger): AgentStep {
-  const guarded = guardFinish(answer.trim(), ledger.entries);
-  return { type: 'finish', answer: guarded.answer, outcome: guarded.outcome, ledger: ledger.toJSON() };
-}
-
 async function* attemptReplay(
   steps: RecordedStep[],
   host: HostAdapter,
@@ -222,42 +196,11 @@ export function createAgent(options: AgentOptions) {
       { role: 'user', content: `${userMessage}\n\n当前页面：\n${seeded}${prior}` },
     ];
 
-    // 程序模式收尾：outcome 与证据小结全由账本算，绝不替模型自述背书（defense-in-depth）。
-    // - 空账本＝这回合没经任何工具干活 → 加注“未执行任何动作”（堵空账本谎报）。
-    // - 有成功写但也有被拒授权＝部分完成 → outcome=partial（堵“部分取消却报全部完成”的谎报）。
-    const programFinish = (answer: string, aborted = false): AgentStep => {
-      const entries = ledger.entries;
-      const verified = entries.filter((e) => e.kind === 'write' && e.verified).length;
-      const unverified = entries.filter((e) => e.kind === 'write' && !e.verified).length;
-      const cancelled = entries.filter((e) => e.kind === 'grant' && !e.approved).length;
-
-      let outcome: Outcome;
-      if (unverified > 0) outcome = 'failed';
-      else if (cancelled > 0 && verified > 0) outcome = 'partial';
-      else if (cancelled > 0) outcome = 'cancelled';
-      else outcome = 'completed';
-      if (aborted && (outcome === 'completed' || outcome === 'partial')) outcome = 'failed';
-
-      const notes: string[] = [];
-      if (entries.length === 0) {
-        notes.push('本回合未经任何工具操作或读取页面，未执行任何动作，以上仅为直接作答；不要据此认为相关任务已完成');
-      } else {
-        const tally: string[] = [];
-        if (verified > 0) tally.push(`成功 ${verified} 项`);
-        if (cancelled > 0) tally.push(`取消 ${cancelled} 项`);
-        if (unverified > 0) tally.push(`未验证 ${unverified} 项`);
-        if (tally.length > 0) notes.push(`实际：${tally.join('·')}`);
-        if (cancelled > 0) notes.push('有动作被你取消，未全部完成');
-      }
-      const finalAnswer = notes.length > 0 ? `${answer}\n（注意：${notes.join('；')}。）`.trim() : answer;
-      return { type: 'finish', answer: finalAnswer, outcome, ledger: ledger.toJSON() };
-    };
-
     for (let i = 0; i < maxSteps; i++) {
       const turn = await llm.step(messages, tools);
 
       if (turn.toolCalls.length === 0) {
-        yield programFinish(turn.content.trim());
+        yield programFinish(ledger, turn.content.trim());
         return;
       }
       messages.push({ role: 'assistant', content: turn.content, toolCalls: turn.toolCalls });
@@ -265,7 +208,7 @@ export function createAgent(options: AgentOptions) {
       let done = false;
       for (const call of turn.toolCalls) {
         if (call.name === 'finish') {
-          yield programFinish(String(call.arguments.answer ?? '').trim());
+          yield programFinish(ledger, String(call.arguments.answer ?? '').trim());
           return;
         }
         if (call.name === 'runProgram') {
@@ -297,7 +240,7 @@ export function createAgent(options: AgentOptions) {
           const reflect = await llm.step(messages, [FINISH_TOOL]);
           const reflectCall = reflect.toolCalls.find((c) => c.name === 'finish');
           const reflectAnswer = (reflectCall ? String(reflectCall.arguments.answer ?? '') : reflect.content).trim();
-          const fin = programFinish(reflectAnswer || result.answer.trim() || '（程序已执行）', result.aborted);
+          const fin = programFinish(ledger, reflectAnswer || result.answer.trim() || '（程序已执行）', result.aborted);
           // 录制：只在程序真正 completed 且未 abort 时入库——partial/cancelled/failed 不背书为可复用配方。
           if (recipes && fin.type === 'finish' && fin.outcome === 'completed' && !result.aborted) {
             recipes.record(recipeSignature, { program, goal: userMessage, recordedAt: Date.now() });
@@ -313,7 +256,7 @@ export function createAgent(options: AgentOptions) {
       if (done) return;
     }
 
-    yield programFinish('我没能在限定步数内完成这个任务，没有可确认的结果。', true);
+    yield programFinish(ledger, '我没能在限定步数内完成这个任务，没有可确认的结果。', true);
   }
 
   async function* run(userMessage: string): AsyncGenerator<AgentStep> {
