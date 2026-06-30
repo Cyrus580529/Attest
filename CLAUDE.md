@@ -14,16 +14,15 @@
 5. **记忆只加速，不背书**。Page Memory 命中就零-LLM 重放，但 **verifier 始终是唯一真相**；记忆失效只回退、**绝不谎报或乱动**；高危动作重放时仍 held。
 6. **协作式赌注**。Attest 服务"实现契约的页面"，不啃任意陌生站点。别把"无契约 DOM 降级/抓取"做成主路径（如要做，必须先 brainstorm 当独立切片）。
 
-## 二、开发流程（每个切片）
+## 二、开发流程（按改动大小裁剪，别一刀切）
 
-```
-brainstorm（动引擎前必做）→ spec → plan → TDD 实现 → 自我验证 → 合并
-```
+核心原则:**流程配得上改动的大小**。小改直接干,别为动几行码写一堆文档——那是负担,不是严谨。
 
-- **动核心运行时（loop/verifier/memory 等）前，必须先写 spec/plan 并经用户审阅**；引擎类切片尤其要先 brainstorm + 用户拍板。
-- **TDD**：先写失败测试 → 看它红 → 最小实现 → 看它绿 → commit。每个 task 一个 commit，提交信息用 conventional commits。
-- 切片别拆太细，3-4 个大切片为宜；纯函数工具可批量写、批量测。
-- **YAGNI**：deferred 了混合覆盖、world-model、预测式规划——别为"看起来完整/更颠覆"加当前不需要的东西。赢的是**做透并 ship 的一个机制**，不是落不了地的宏图。
+- **小改 / 局部 / 纯函数 / 修 bug**:直接做。有逻辑/边界/会回归的走 TDD(红→绿→commit);改完跑 `npm test` 绿了就提交,**不写 spec/plan**。
+- **只有两种情况值得先写下来**:① 改**核心不变量的语义**(loop/verifier/ledger/memory 的判定逻辑)且方案不显然——提交前用几句话(commit body 或一小段 note)说清"为什么这么改、碰了哪条红线";② **跨多回合的大切片**——才值一份简短 plan。其余一律省。
+- **brainstorm 只在真有分叉时用**:有多条路要选、或要改架构红线的取舍时才坐下来对齐;不是每个切片的固定关卡。
+- **红线不裁**(§一 永远守):verify-or-refuse 不松;**行为变更**在声称"完成"前仍要真模型 live 验收——纯重构例外(绿的既有套件即证行为未变);诚实报告、conventional commits 照旧。
+- **YAGNI**:赢的是**做透并 ship 的一个机制**,不是落不了地的宏图。能用成熟库/现成方案就用,别造轮子。
 
 ## 三、测试与验收（最重要的教训）
 
@@ -63,20 +62,18 @@ npx vitest run test/live   # 脚本化 live 场景
 
 ## 六、现状与开放线（2026-06-30）
 
-**已完成并经真模型验收**（master，125 测试绿）：
-- 契约层 / 单 tool-calling 读循环 / 诚实三件套（verifier+ledger+narrationGuard+高危held，Intent Receipt 两阶段）/ 长程+引用 / 页面记忆（零-LLM 重放+失效回退）。
-- **切片5 Code-as-Action（已 ship + live 验收）**：opt-in `codeAsAction` 开关 → "交清单"范式。模型一次交 JSON-AST 程序，**可挂起解释器**逐节点对实时快照校验执行；高危挂起式 held + **作用域授权**（y/a/N）；写写独立 verify；**三段式 plan→execute→reflect**（计划预览=高层里程碑 + 💭思考 + 看真实结果后复盘）；outcome 增 `partial`、finish 带证据小结。默认 ping-pong/记忆/读循环**零回归**。设计见 `docs/specs/…slice5…design.md`（§11 opt-in、§12 三段式）。
-- live REPL（`/code` 切换）已验证：真用 runProgram、held 真停、scope 授权生效、completed/partial 与账本一致、复盘不谎报。
+**已完成并经真模型验收**（master，139 测试绿）：
+- 契约层 / 单 tool-calling 读循环 / 诚实三件套（verifier+ledger+narrationGuard+高危held）/ 长程+引用 / 页面记忆（零-LLM 重放+失效回退）/ **切片5 Code-as-Action**（三段式 plan→execute→reflect、`partial`、作用域授权 y/a/N、finish 带证据小结）。
 
-**两次 live 暴露并已修的诚实洞**（教训：洞都在"叙述/finish 边界"——内核只管经工具路由的动作，管不住模型用散文宣称没干过的事）：① 空账本谎报（直接 finish 编成功）→ 加注+守卫；② 部分取消被掩盖（混合批准/拒绝报 completed）→ partial outcome + 证据小结 + reflect。
+**切片6 程序记忆=配方先验**（已 ship，确定性测试绿，**待真模型 live 验收**）：`codeAsAction` 成功程序按页面签名入 `RecipeBook`，同签名页面召回最近 3 条**注入上下文**作先验，模型仍走完整三段式自判吻合。**重构要点**：#1 原计划的"零-LLM verbatim 重放"被否——goal-string key 严格则永不命中、放松则退化关键字匹配可能召回不吻合的程序而乱动，且零-LLM 旁路了思考。改先验注入更忠于"记忆只加速不背书"；**签名即陈旧性闸门**，记忆错只浪费一点上下文、绝不误动。设计见 `docs/specs/…slice6…design.md`。
 
-**已知开放线**：
-1. **记忆学会程序**：`codeAsAction` 路径当前**不接记忆**；接上录制+零-LLM 重放后，开关可转默认、ping-pong 写路径退休。
-2. `CandidateSet`/`ReferenceResolver` 已单测但**未接进 live 循环**；与程序 `forEach`/`query` 打通"换一个/就它"。
-3. **per-object 账本**：invoke 按动作名记账、不记"作用在哪个对象"，故复盘只能到动作级 tally；记上对象上下文 → 可精确归因（"102 被取消"）。
-4. **多程序/重规划**：复盘后若未达成，允许再出一段（当前一段+一次复盘）。
-5. **叙述-诚实的原则化**：两个洞都是 reactive 补的；更稳的做法是让用户可见的"结果陈述"由证据账本**生成**，模型只做受约束的措辞（把 verify-or-refuse 从"动作"推广到"叙述"）。
-6. 记忆重放双行打印、全成功时冗余证据小结——轻微啰嗦，可收敛。
+**切片7 架构拆分 + 收紧 API**（已 ship，行为零改动重构，绿套件即证）：`loop.ts` 420→50 行，拆成 `loopTypes / prompts / finish / readLoop / programLoop / loop` 六个职责单一单元，闭包边界变显式 `LoopDeps`；`index.ts` 公共面收敛到真用入口 + `test/index.test.ts` 守卫。
+
+**开放线（优先级序）**：
+1. **token/context 效率**（进行中）：大页面上每回合全量重发快照=钱+延迟大头。用最先进方案（快照 diff / 上下文压实 / 紧凑序列化），有现成库就用，需 live 验证不伤理解。
+2. 配方先验转默认、ping-pong 写路径退休（切片6 验收后）。
+3. **叙述-诚实原则化**：用户可见结果陈述由账本**生成**，模型只做受约束措辞（把 verify-or-refuse 从"动作"推广到"叙述"）；两个诚实洞都是 reactive 补的，这是根治。
+4. `CandidateSet`/`ReferenceResolver` 接 live（已从导出撤下，接进再导出）；per-object 账本（精确归因"102 被取消"）；多程序重规划。
 
 ## 七、命令速查
 
