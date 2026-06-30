@@ -45,6 +45,7 @@ function loadBoard(): void {
 }
 
 let memory: InstanceType<typeof PageMemory> | undefined = new PageMemory();
+let programMode = false; // Code-as-Action 开关（/code 切换）
 
 function show(s: Record<string, unknown>): void {
   const t = s.type as string;
@@ -72,17 +73,25 @@ function makeAgent() {
   return createAgent({
     llm: createOpenAiAdapter({ apiKey: key, baseUrl, model, fetchImpl: nodeFetch }),
     host: createDomHostAdapter({ getUrl: () => '/board' }),
-    memory,
+    // Code-as-Action 模式下不接记忆（本切片 defer）
+    memory: programMode ? undefined : memory,
+    codeAsAction: programMode,
     confirm: async (intent) => {
-      const a = await rl.question(`  ⚠️ 高危「${intent.label}」执行吗？(y/N) `);
-      return { approved: a.trim().toLowerCase() === 'y' };
+      const a = (
+        await rl.question(`  ⚠️ 高危「${intent.label}」执行吗？(y=仅此次 / a=本程序全部同类 / N=拒绝) `)
+      )
+        .trim()
+        .toLowerCase();
+      if (a === 'a') return { approved: true, scope: 'all' };
+      return { approved: a === 'y' };
     },
   });
 }
 
-console.log(`\nAttest REPL  |  ${baseUrl} / ${model}  |  记忆:开`);
-console.log('命令: /reset 重置页面 | /memory 开关记忆 | /quit 退出 | 其它=对 agent 说话');
-console.log('示范页: 3 个工单(ticket) + open + resolve(高危) + detail\n');
+console.log(`\nAttest REPL  |  ${baseUrl} / ${model}  |  记忆:开  |  模式:挤牙膏(单步)`);
+console.log('命令: /reset 重置页面 | /memory 开关记忆 | /code 切换"交清单"模式(Code-as-Action) | /quit 退出 | 其它=对 agent 说话');
+console.log('示范页: 3 个工单(ticket) + open + resolve(高危) + detail');
+console.log('试试(开 /code 后): 把每个工单都打开看一眼，然后全部标记为已解决\n');
 loadBoard();
 
 for (;;) {
@@ -97,6 +106,13 @@ for (;;) {
   if (line === '/memory') {
     memory = memory ? undefined : new PageMemory();
     console.log(`（记忆已${memory ? '开' : '关'}）`);
+    continue;
+  }
+  if (line === '/code') {
+    programMode = !programMode;
+    console.log(
+      `（已切到${programMode ? '“交清单”模式 Code-as-Action：一次提交一段程序，高危可三选 y/a/N，本模式不接记忆' : '“挤牙膏”单步模式（默认，含记忆）'}）`,
+    );
     continue;
   }
   try {
