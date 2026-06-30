@@ -56,7 +56,10 @@ function makeProgramAgent() {
 }
 
 function show(step: AgentStep): void {
-  if (step.type === 'finish') {
+  if (step.type === 'plan') {
+    console.log('  📋 计划：');
+    step.items.forEach((it, i) => console.log(`     ${i + 1}. ${it}`));
+  } else if (step.type === 'finish') {
     console.log(`  FINISH [${step.outcome}] ${step.answer}`);
     console.log(`    ledger: ${step.ledger.map((e) => e.kind).join(' → ')}`);
   } else if (step.type === 'action') {

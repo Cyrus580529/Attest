@@ -68,6 +68,21 @@ describe('loop code-as-action (codeAsAction)', () => {
     expect(steps.at(-1)).toMatchObject({ type: 'finish', outcome: 'completed' });
   });
 
+  it('运行程序前先发一个 plan 步（人话计划，来自程序本身）', async () => {
+    const before = build(`<input data-agent-control="amount" value="0" />`);
+    const after = build(`<input data-agent-control="amount" value="5" />`, '/p');
+    const program = { body: [{ op: 'setControl', on: { control: 'amount' }, value: '5' }, { op: 'finish', answer: 'ok' }] };
+    const llm = new FakeLlmAdapter([toolCallTurn('runProgram', { program })]);
+    const host = new FakeHostAdapter(before, { 'control:amount': after });
+    const steps = await collect(createAgent({ llm, host, codeAsAction: true }).run('填5'));
+    const planIdx = steps.findIndex((s) => s.type === 'plan');
+    const actionIdx = steps.findIndex((s) => s.type === 'action');
+    expect(planIdx).toBeGreaterThanOrEqual(0);
+    expect(planIdx).toBeLessThan(actionIdx); // 计划在执行之前
+    const plan = steps[planIdx];
+    expect(plan?.type === 'plan' && plan.items).toContain('把「amount」设为 5');
+  });
+
   it('真实失败模式：直接 finish 编造动作成功（空账本）→ 必须加注未执行任何动作，不替模型背书', async () => {
     const llm = new FakeLlmAdapter([toolCallTurn('finish', { answer: '已全部标记为已解决' })]);
     const host = new FakeHostAdapter(build(`<button data-agent-action="resolve" data-agent-risk="high">R</button>`));

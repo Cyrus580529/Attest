@@ -45,6 +45,7 @@ export { validateProgram } from './core/program/types';
 export type { Program, Node, Query, Cond } from './core/program/types';
 export { runProgram } from './core/program/interpreter';
 export type { InterpreterDeps, ProgramResult } from './core/program/interpreter';
+export { summarizeProgram } from './core/program/summarize';
 export { executeWrite } from './core/execWrite';
 export type { WriteRequest, WriteResult } from './core/execWrite';
 

@@ -47,19 +47,28 @@ function loadBoard(): void {
 let memory: InstanceType<typeof PageMemory> | undefined = new PageMemory();
 let programMode = false; // Code-as-Action 开关（/code 切换）
 
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
 function show(s: Record<string, unknown>): void {
   const t = s.type as string;
-  if (t === 'finish') {
+  if (t === 'plan') {
+    const items = s.items as string[];
+    console.log('\x1b[1m📋 我打算这样做：\x1b[0m');
+    items.forEach((it, i) => console.log(`   ${i + 1}. ${it}`));
+    console.log('\x1b[2m   ——开始执行——\x1b[0m');
+  } else if (t === 'finish') {
     console.log(`\x1b[1mFINISH [${String(s.outcome)}]\x1b[0m ${String(s.answer)}`);
     const ledger = s.ledger as { kind: string }[];
     console.log(`  账本: ${ledger.map((e) => e.kind).join(' → ') || '(空)'}`);
   } else if (t === 'action') {
-    const ev = s.evidence as string[];
-    console.log(`  action ${String(s.tool)}(${String(s.refId)}) verified=${String(s.verified)} 证据=[${ev.join('; ')}]`);
+    const ok = s.verified ? '\x1b[32m✓\x1b[0m 已完成' : '\x1b[31m✗\x1b[0m 已执行但';
+    const tail = s.verified ? '（页面已确认变化）' : '未检测到可观察变化（未验证）';
+    console.log(`  ${ok}${tail}`);
   } else if (t === 'replay') {
     console.log(`  \x1b[33m⚡replay\x1b[0m ${String(s.tool)}${s.refId ? `(${String(s.refId)})` : ''}  ← 记忆，零 LLM`);
   } else if (t === 'observation') {
-    console.log(`  observe ${String(s.tool)}${s.refId ? `(${String(s.refId)})` : ''}`);
+    const what = s.tool === 'openObject' ? '已打开' : s.tool === 'readSurface' ? '已查看' : '已观察';
+    console.log(`  \x1b[2m▸ ${what}\x1b[0m`);
   } else if (t === 'held') {
     console.log(`  \x1b[31mheld\x1b[0m ${String((s.intent as { label: string }).label)}`);
   } else if (t === 'cancelled') {
@@ -116,7 +125,13 @@ for (;;) {
     continue;
   }
   try {
-    for await (const step of makeAgent().run(line)) show(step as unknown as Record<string, unknown>);
+    for await (const step of makeAgent().run(line)) {
+      // Claude Code 式停顿：执行步之间留一点节奏，逐条推进而非一瞬间糊上去
+      const t = (step as { type: string }).type;
+      if (t === 'observation' || t === 'action' || t === 'replay') await sleep(380);
+      else if (t === 'plan') await sleep(150);
+      show(step as unknown as Record<string, unknown>);
+    }
   } catch (e) {
     console.log(`  [运行出错] ${(e as Error).message}`);
   }

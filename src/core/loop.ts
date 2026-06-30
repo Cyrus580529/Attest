@@ -7,6 +7,7 @@ import { resolveRef } from './refResolver';
 import { serializeSnapshot } from './serialize';
 import { validateProgram, type Program } from './program/types';
 import { runProgram } from './program/interpreter';
+import { summarizeProgram } from './program/summarize';
 import { diffSnapshots } from '../honesty/verifier';
 import { isHighRisk } from '../honesty/riskPolicy';
 import { Ledger } from '../honesty/ledger';
@@ -20,6 +21,7 @@ export type AgentStep =
   | { type: 'held'; tool: string; refId: string; intent: Intent }
   | { type: 'cancelled'; tool: string; refId: string; reason: string }
   | { type: 'replay'; tool: string; refId?: string }
+  | { type: 'plan'; items: string[] }
   | { type: 'error'; tool: string; refId?: string; error: string }
   | { type: 'finish'; answer: string; outcome: Outcome; ledger: LedgerEntry[] };
 
@@ -260,7 +262,10 @@ export function createAgent(options: AgentOptions) {
             messages.push({ role: 'tool', toolCallId: call.id, content: `ERROR: 程序非法: ${detail}` });
             continue;
           }
-          const result = yield* runProgram(call.arguments.program as Program, { host, ledger, confirm });
+          const program = call.arguments.program as Program;
+          const planItems = summarizeProgram(program, host.snapshot());
+          if (planItems.length > 0) yield { type: 'plan', items: planItems };
+          const result = yield* runProgram(program, { host, ledger, confirm });
           yield programFinish(result.answer.trim() || '（程序已执行）', result.aborted);
           done = true;
           break;
