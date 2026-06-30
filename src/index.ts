@@ -1,4 +1,4 @@
-// 契约层
+// ── 契约层：实现 data-agent-* 的页面零额外代码即可被驱动 ──
 export type {
   Ref,
   RefKind,
@@ -11,62 +11,36 @@ export type {
 } from './types';
 export { parseContract, parseContractWithElements } from './contract/parseContract';
 export type { ContractParseResult } from './contract/parseContract';
-export { RefMinter } from './contract/refs';
 
-// host
+// ── host 适配器 ──
 export type { HostAdapter, HostResult } from './host/types';
 export { createDomHostAdapter } from './adapters/domHostAdapter';
 export type { DomHostAdapterOptions } from './adapters/domHostAdapter';
 
-// llm
+// ── LLM 适配器 ──
 export type { LlmAdapter, LlmMessage, LlmToolCall, LlmTurn, ToolSchema, LlmRole } from './llm/types';
 export { createOpenAiAdapter } from './llm/openaiAdapter';
 export type { OpenAiAdapterOptions } from './llm/openaiAdapter';
 
-// core
+// ── 内核：创建并驱动 agent ──
 export { createAgent } from './core/loop';
 export type { AgentStep, AgentOptions } from './core/loop';
-export { resolveRef } from './core/refResolver';
-export type { RefResolution } from './core/refResolver';
-export {
-  READ_LOOP_TOOLS,
-  WRITE_TOOLS,
-  ACT_TOOLS,
-  PROGRAM_ACT_TOOLS,
-  RUN_PROGRAM_TOOL,
-  FINISH_TOOL,
-  REF_TOOL_KINDS,
-  WRITE_REF_KINDS,
-} from './core/tools';
 export { serializeSnapshot } from './core/serialize';
 
-// core 切片5：Code-as-Action（带信任不变量的程序化动作）
+// ── Code-as-Action：构造 / 校验 / 执行程序 ──
 export { validateProgram } from './core/program/types';
 export type { Program, Node, Query, Cond } from './core/program/types';
 export { runProgram } from './core/program/interpreter';
 export type { InterpreterDeps, ProgramResult } from './core/program/interpreter';
-export { summarizeProgram } from './core/program/summarize';
-export { executeWrite } from './core/execWrite';
-export type { WriteRequest, WriteResult } from './core/execWrite';
 
-// core 4a：跨回合引用 + 长程追踪
-export { CandidateSet, candidatesFromSnapshot } from './core/candidateSet';
-export { resolveReference } from './core/referenceResolver';
-export type { Reference } from './core/referenceResolver';
-export { PlanRunner } from './core/planRunner';
+// ── 记忆（opt-in，传给 createAgent）──
+export { PageMemory } from './memory/pageMemory';
+export { RecipeBook } from './memory/recipeBook';
+export type { Recipe } from './memory/recipeBook';
 
-// memory 4b：页面记忆
-export { pageSignature, goalKey, memoryKey } from './memory/pageSignature';
-export { PageMemory, recordRef, resolveRecordedRef } from './memory/pageMemory';
-export type { RecordedRef, RecordedStep, MemoryEntry } from './memory/pageMemory';
-
-// honesty 诚实层
+// ── 诚实层：检视 AgentStep 结果所需的类型 ──
 export type { Intent, Evidence, LedgerEntry, Outcome, ConfirmFn } from './honesty/types';
-export { diffSnapshots } from './honesty/verifier';
-export { actionRisk, isHighRisk } from './honesty/riskPolicy';
-export { Ledger, computeOutcome } from './honesty/ledger';
-export { guardFinish } from './honesty/narrationGuard';
 
-// testing 双适配器（供库使用者写测试）
+// ── 测试双适配器（供库使用者写测试）──
 export { FakeLlmAdapter, toolCallTurn, textTurn } from './testing/fakeLlmAdapter';
 export { FakeHostAdapter } from './testing/fakeHostAdapter';
