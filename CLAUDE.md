@@ -69,11 +69,16 @@ npx vitest run test/live   # 脚本化 live 场景
 
 **切片7 架构拆分 + 收紧 API**（已 ship，行为零改动重构，绿套件即证）：`loop.ts` 420→50 行，拆成 `loopTypes / prompts / finish / readLoop / programLoop / loop` 六个职责单一单元，闭包边界变显式 `LoopDeps`；`index.ts` 公共面收敛到真用入口 + `test/index.test.ts` 守卫。
 
+**已 ship 的内核优化**：渐进披露（播种 `maxPerType=20`，大页面只露轮廓，真模型 25 工单不编 ref）；写路径单源化（读循环改调 `executeWrite`，verify-or-refuse 只此一处）；复盘回喂 surface 文本（闭合读取类任务缺口）。
+
+**真模型验收脚本**：`examples/live-check.ts`（玩具看板 S1/S2/S3）、`examples/live-real.ts`（真实工作台 T1-T4）。绕 happy-dom CORS 用原生 fetch；vitest 的 `test/live` 在 happy-dom 下会撞 CORS，真验收走这两个脚本。
+
 **开放线（优先级序）**：
-1. **token/context 效率**（进行中）：大页面上每回合全量重发快照=钱+延迟大头。用最先进方案（快照 diff / 上下文压实 / 紧凑序列化），有现成库就用，需 live 验证不伤理解。
-2. 配方先验转默认、ping-pong 写路径退休（切片6 验收后）。
-3. **叙述-诚实原则化**：用户可见结果陈述由账本**生成**，模型只做受约束措辞（把 verify-or-refuse 从"动作"推广到"叙述"）；两个诚实洞都是 reactive 补的，这是根治。
-4. `CandidateSet`/`ReferenceResolver` 接 live（已从导出撤下，接进再导出）；per-object 账本（精确归因"102 被取消"）；多程序重规划。
+1. **配方"有用"未量**：只证无害（S3 不串味），没做带/不带配方 A/B 比收敛/token。量了再决定转默认、ping-pong 退休。
+2. **发布工程件**：README / exports map / 版本 / 记忆持久化全缺——"当库发布"的硬门槛。
+3. 多模型验收（现仅 deepseek-v4-pro）；更多真实页面（导航/分页/嵌套）。
+4. **叙述-诚实原则化**：结果陈述由账本生成，模型只受约束措辞（把 verify-or-refuse 推广到叙述）。
+5. `CandidateSet`/`ReferenceResolver` 接 live（已撤出导出，接进再导出）；per-object 账本；多程序重规划。
 
 ## 七、命令速查
 
