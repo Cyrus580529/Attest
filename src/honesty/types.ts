@@ -16,7 +16,7 @@ export type LedgerEntry =
   | { kind: 'write'; tool: string; refId: string; verified: boolean; evidence: string[] }
   | { kind: 'error'; tool: string; detail: string };
 
-export type Outcome = 'completed' | 'failed' | 'cancelled';
+export type Outcome = 'completed' | 'failed' | 'cancelled' | 'partial';
 
 /**
  * 高危确认。返回 approved；可选 scope：'all' 表示在本次 run 内对同名动作授权，

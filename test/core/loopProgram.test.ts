@@ -3,6 +3,9 @@ import { parseContract } from '../../src/contract/parseContract';
 import { createAgent, type AgentStep } from '../../src/core/loop';
 import { FakeLlmAdapter, toolCallTurn } from '../../src/testing/fakeLlmAdapter';
 import { FakeHostAdapter } from '../../src/testing/fakeHostAdapter';
+import type { HostAdapter } from '../../src/host/types';
+import type { ConfirmFn } from '../../src/honesty/types';
+import type { PageSnapshot } from '../../src/types';
 
 function build(html: string, url = '/p') {
   document.body.innerHTML = html;
@@ -101,6 +104,34 @@ describe('loop code-as-action (codeAsAction)', () => {
     const finish = steps.at(-1);
     expect(finish?.type === 'finish' && finish.answer).not.toContain('未执行任何动作');
     expect(finish).toMatchObject({ type: 'finish', outcome: 'completed' });
+  });
+
+  it('部分取消（一个批准一个拒绝）→ outcome=partial + 证据小结，不替"全部完成"背书', async () => {
+    const base = build(`<button data-agent-action="resolve" data-agent-risk="high">标记为已解决</button>`, '/b');
+    let n = 0;
+    let cur: PageSnapshot = base;
+    const host: HostAdapter = {
+      snapshot: () => cur,
+      readSurface: (r) => cur.surfaces.find((s) => s.ref.id === r.id)?.text ?? '',
+      openObject: () => Promise.resolve({ ok: true, snapshot: cur }),
+      navigate: () => Promise.resolve({ ok: true, snapshot: cur }),
+      setControl: () => Promise.resolve({ ok: true, snapshot: cur }),
+      invokeAction: () => {
+        n += 1;
+        cur = { ...base, url: `${base.url}#${n}` };
+        return Promise.resolve({ ok: true, snapshot: cur });
+      },
+    };
+    let c = 0;
+    const confirm: ConfirmFn = () => Promise.resolve(c++ === 0 ? { approved: true } : { approved: false });
+    const program = {
+      body: [{ op: 'invoke', action: 'resolve' }, { op: 'invoke', action: 'resolve' }, { op: 'finish', answer: '已全部标记为已解决' }],
+    };
+    const llm = new FakeLlmAdapter([toolCallTurn('runProgram', { program })]);
+    const steps = await collect(createAgent({ llm, host, codeAsAction: true, confirm }).run('全部解决'));
+    const finish = steps.at(-1);
+    expect(finish?.type === 'finish' && finish.outcome).toBe('partial');
+    expect(finish?.type === 'finish' && finish.answer).toContain('取消');
   });
 
   it('非法程序 → 错误回灌，模型可退而 finish', async () => {

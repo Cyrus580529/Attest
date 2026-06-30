@@ -226,15 +226,34 @@ export function createAgent(options: AgentOptions) {
       { role: 'user', content: `${userMessage}\n\n当前页面：\n${seeded}` },
     ];
 
-    // 程序模式收尾：outcome 由账本算；账本完全为空＝这回合没经任何工具干活，
-    // 必须如实加注、绝不替模型“宣称做过却没路由任何动作”的自述背书（堵住空账本谎报）。
+    // 程序模式收尾：outcome 与证据小结全由账本算，绝不替模型自述背书（defense-in-depth）。
+    // - 空账本＝这回合没经任何工具干活 → 加注“未执行任何动作”（堵空账本谎报）。
+    // - 有成功写但也有被拒授权＝部分完成 → outcome=partial（堵“部分取消却报全部完成”的谎报）。
     const programFinish = (answer: string, aborted = false): AgentStep => {
-      const guarded = guardFinish(answer, ledger.entries);
-      const outcome = aborted && guarded.outcome === 'completed' ? 'failed' : guarded.outcome;
-      const ranNothing = ledger.entries.length === 0;
-      const finalAnswer = ranNothing
-        ? `${guarded.answer}\n（注意：本回合未经任何工具操作或读取页面，未执行任何动作，以上仅为直接作答；不要据此认为相关任务已完成。）`.trim()
-        : guarded.answer;
+      const entries = ledger.entries;
+      const verified = entries.filter((e) => e.kind === 'write' && e.verified).length;
+      const unverified = entries.filter((e) => e.kind === 'write' && !e.verified).length;
+      const cancelled = entries.filter((e) => e.kind === 'grant' && !e.approved).length;
+
+      let outcome: Outcome;
+      if (unverified > 0) outcome = 'failed';
+      else if (cancelled > 0 && verified > 0) outcome = 'partial';
+      else if (cancelled > 0) outcome = 'cancelled';
+      else outcome = 'completed';
+      if (aborted && (outcome === 'completed' || outcome === 'partial')) outcome = 'failed';
+
+      const notes: string[] = [];
+      if (entries.length === 0) {
+        notes.push('本回合未经任何工具操作或读取页面，未执行任何动作，以上仅为直接作答；不要据此认为相关任务已完成');
+      } else {
+        const tally: string[] = [];
+        if (verified > 0) tally.push(`成功 ${verified} 项`);
+        if (cancelled > 0) tally.push(`取消 ${cancelled} 项`);
+        if (unverified > 0) tally.push(`未验证 ${unverified} 项`);
+        if (tally.length > 0) notes.push(`实际：${tally.join('·')}`);
+        if (cancelled > 0) notes.push('有动作被你取消，未全部完成');
+      }
+      const finalAnswer = notes.length > 0 ? `${answer}\n（注意：${notes.join('；')}。）`.trim() : answer;
       return { type: 'finish', answer: finalAnswer, outcome, ledger: ledger.toJSON() };
     };
 
