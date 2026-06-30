@@ -9,15 +9,21 @@ import { pageSignature } from '../memory/pageSignature';
 import { factualLedgerSummary, formatRecipes, programFinish } from './finish';
 import type { AgentStep, LoopDeps } from './loopTypes';
 
+/** 播种时同类型对象超此数则折叠为轮廓（渐进披露）；模型按需 forEach/open/read 钻取全详。 */
+const SEED_MAX_PER_TYPE = 20;
+
 /**
  * Code-as-Action 模式：召回配方先验 → 播种观察 → 模型交 runProgram → 解释器驱动 →
  * 复盘（看真实结果再 finish）→ 由账本算 outcome；completed 程序录入配方库。
+ *
+ * 播种用渐进披露轮廓（大页面只露类型+数量+样例，省 token、随规模线性扩展）；
+ * 解释器的 observe/open/read 仍取全详，做到"按需钻取"。
  */
 export async function* runProgramLoop(deps: LoopDeps, userMessage: string): AsyncGenerator<AgentStep> {
   const { llm, host, tools, systemPrompt, confirm, recipes, maxSteps } = deps;
   const ledger = new Ledger();
   const recipeSignature = recipes ? pageSignature(host.snapshot()) : '';
-  const seeded = serializeSnapshot(host.snapshot());
+  const seeded = serializeSnapshot(host.snapshot(), { maxPerType: SEED_MAX_PER_TYPE });
   const recalled = recipes ? recipes.recall(recipeSignature, 3) : [];
   const prior = recalled.length > 0 ? `\n\n${formatRecipes(recalled)}` : '';
   const messages: LlmMessage[] = [

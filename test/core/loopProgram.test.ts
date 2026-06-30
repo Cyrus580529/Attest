@@ -168,6 +168,26 @@ describe('loop code-as-action (codeAsAction)', () => {
     expect(finish?.type === 'finish' && finish.answer).toContain('取消');
   });
 
+  it('渐进披露：播种对大对象集只给轮廓（省 token），不逐个塞', async () => {
+    const html = Array.from({ length: 30 }, (_, i) => `<div data-agent-object="ticket:${i}">工单${i}</div>`).join('');
+    const llm = new FakeLlmAdapter([toolCallTurn('finish', { answer: '看看' })]);
+    const host = new FakeHostAdapter(build(html, '/b'));
+    await collect(createAgent({ llm, host, codeAsAction: true }).run('有哪些工单'));
+    const seed = llm.calls[0]?.messages.find((m) => m.role === 'user')?.content as string;
+    expect(seed).toContain('共 30 个'); // 轮廓
+    expect(seed).not.toContain('object object:ticket:29'); // 没逐个全列
+  });
+
+  it('小对象集播种照常逐个列（无回归）', async () => {
+    const html = Array.from({ length: 3 }, (_, i) => `<div data-agent-object="ticket:${i}">工单${i}</div>`).join('');
+    const llm = new FakeLlmAdapter([toolCallTurn('finish', { answer: '看看' })]);
+    const host = new FakeHostAdapter(build(html, '/b'));
+    await collect(createAgent({ llm, host, codeAsAction: true }).run('有哪些工单'));
+    const seed = llm.calls[0]?.messages.find((m) => m.role === 'user')?.content as string;
+    expect(seed).toContain('object object:ticket:2 — 工单2');
+    expect(seed).not.toContain('共 3 个');
+  });
+
   it('非法程序 → 错误回灌，模型可退而 finish', async () => {
     const llm = new FakeLlmAdapter([
       toolCallTurn('runProgram', { program: { body: [{ op: 'teleport' }] } }),
