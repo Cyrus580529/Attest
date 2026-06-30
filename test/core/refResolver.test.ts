@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseContract } from '../../src/contract/parseContract';
-import { resolveRef } from '../../src/core/refResolver';
+import { resolveRef, resolveObjectByLabel } from '../../src/core/refResolver';
 
 function snap() {
   document.body.innerHTML = `
@@ -42,6 +42,44 @@ describe('resolveRef 容错（模型省略 kind 前缀）', () => {
 
   it('补全后仍不存在 → 报错（不乱猜）', () => {
     const r = resolveRef(snap(), 'detail', 'object'); // object:detail 不存在
+    expect(r.ok).toBe(false);
+  });
+});
+
+describe('resolveObjectByLabel（按描述/标签解析对象，歧义即拒绝）', () => {
+  function board() {
+    document.body.innerHTML = `
+      <li data-agent-object="item:1">登录超时 500</li>
+      <li data-agent-object="item:2">支付回调失败</li>
+      <li data-agent-object="item:3">导出 CSV 乱码</li>
+    `;
+    return parseContract(document.body, '/b');
+  }
+
+  it('精确 label 匹配 → 解析', () => {
+    const r = resolveObjectByLabel(board(), '登录超时 500');
+    expect(r.ok && r.ref.id).toBe('object:item:1');
+  });
+
+  it('唯一子串（label 含短语）→ 解析', () => {
+    const r = resolveObjectByLabel(board(), '支付');
+    expect(r.ok && r.ref.id).toBe('object:item:2');
+  });
+
+  it('短语含 label → 解析', () => {
+    const r = resolveObjectByLabel(board(), '把"导出 CSV 乱码"这条删掉');
+    expect(r.ok && r.ref.id).toBe('object:item:3');
+  });
+
+  it('多个命中 → error（不猜）', () => {
+    document.body.innerHTML = `<li data-agent-object="item:1">登录页问题</li><li data-agent-object="item:2">登录超时</li>`;
+    const r = resolveObjectByLabel(parseContract(document.body, '/b'), '登录');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/多个|具体/);
+  });
+
+  it('零命中 → error', () => {
+    const r = resolveObjectByLabel(board(), '不存在的东西');
     expect(r.ok).toBe(false);
   });
 });

@@ -55,6 +55,25 @@ describe('ProgramInterpreter', () => {
     expect(ret.aborted).toBe(false);
   });
 
+  it('open 按描述/label 解析对象（不止 ref-id）', async () => {
+    const host = new FakeHostAdapter(makeSnap(BOARD));
+    const program: Program = {
+      body: [{ op: 'open', on: 'B' }, { op: 'finish', answer: 'ok' }], // "B" 是 ticket:102 的 label
+    };
+    const { ret } = await drain(runProgram(program, { host, ledger: new Ledger(), confirm: DENY }));
+    expect(host.log.filter((l) => l.kind === 'open').map((l) => l.refId)).toEqual(['object:ticket:102']);
+    expect(ret.aborted).toBe(false);
+  });
+
+  it('open 描述歧义/无匹配 → 中止（不猜）', async () => {
+    const host = new FakeHostAdapter(makeSnap(BOARD));
+    const program: Program = { body: [{ op: 'open', on: '不存在的标签' }] };
+    const { steps, ret } = await drain(runProgram(program, { host, ledger: new Ledger(), confirm: DENY }));
+    expect(steps.some((s) => s.type === 'error')).toBe(true);
+    expect(ret.aborted).toBe(true);
+    expect(host.log.some((l) => l.kind === 'open')).toBe(false);
+  });
+
   it('if 真分支执行、假分支跳过', async () => {
     const truthy: Program = {
       body: [{ op: 'if', cond: { surface: 'detail', contains: '选择' }, then: [{ op: 'open', on: 'object:ticket:101' }] }],

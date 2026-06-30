@@ -3,7 +3,8 @@ import type { HostAdapter } from '../../host/types';
 import type { ConfirmFn } from '../../honesty/types';
 import { Ledger } from '../../honesty/ledger';
 import type { AgentStep } from '../loop';
-import { resolveRef } from '../refResolver';
+import { resolveRef, resolveObjectByLabel } from '../refResolver';
+import type { RefResolution } from '../refResolver';
 import { serializeSnapshot } from '../serialize';
 import { executeWrite } from '../execWrite';
 import type { Cond, Node, Program, Query } from './types';
@@ -52,8 +53,15 @@ export async function* runProgram(
     return surf ? surf.text.includes(c.contains) : false;
   }
 
-  function resolveOn(on: string): string | undefined {
-    return on.startsWith('$') ? env.get(on.slice(1)) : on;
+  /** 解析 open 的目标对象：$var→环境→ref-id；否则先当 ref-id，再当描述按 label 解析（歧义即拒绝，不猜）。 */
+  function resolveObjectOn(snap: PageSnapshot, on: string): RefResolution {
+    if (on.startsWith('$')) {
+      const id = env.get(on.slice(1));
+      if (!id) return { ok: false, error: `未绑定变量或空引用: ${on}` };
+      return resolveRef(snap, id, 'object');
+    }
+    const direct = resolveRef(snap, on, 'object');
+    return direct.ok ? direct : resolveObjectByLabel(snap, on);
   }
 
   async function* fail(op: string, error: string, refId?: string): AsyncGenerator<AgentStep, Signal> {
@@ -108,14 +116,12 @@ export async function* runProgram(
         return yield* evalNodes(branch);
       }
       case 'open': {
-        const refId = resolveOn(node.on);
-        if (!refId) return yield* fail('open', `未绑定变量或空引用: ${node.on}`);
-        const res = resolveRef(host.snapshot(), refId, 'object');
-        if (!res.ok) return yield* fail('open', res.error, refId);
+        const res = resolveObjectOn(host.snapshot(), node.on);
+        if (!res.ok) return yield* fail('open', res.error, node.on);
         const r = await host.openObject(res.ref);
         const text = serializeSnapshot(r.snapshot);
         ledger.record({ kind: 'observe', tool: 'openObject', detail: text });
-        yield { type: 'observation', tool: 'openObject', refId, result: text };
+        yield { type: 'observation', tool: 'openObject', refId: res.ref.id, result: text };
         return 'continue';
       }
       case 'read': {
