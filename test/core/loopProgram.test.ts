@@ -68,6 +68,26 @@ describe('loop code-as-action (codeAsAction)', () => {
     expect(steps.at(-1)).toMatchObject({ type: 'finish', outcome: 'completed' });
   });
 
+  it('真实失败模式：直接 finish 编造动作成功（空账本）→ 必须加注未执行任何动作，不替模型背书', async () => {
+    const llm = new FakeLlmAdapter([toolCallTurn('finish', { answer: '已全部标记为已解决' })]);
+    const host = new FakeHostAdapter(build(`<button data-agent-action="resolve" data-agent-risk="high">R</button>`));
+    const steps = await collect(createAgent({ llm, host, codeAsAction: true }).run('把工单全部标记为已解决'));
+    const finish = steps.at(-1);
+    expect(finish?.type === 'finish' && finish.answer).toContain('未执行任何动作');
+  });
+
+  it('真正经程序执行的写不被误加注', async () => {
+    const before = build(`<input data-agent-control="amount" value="0" />`);
+    const after = build(`<input data-agent-control="amount" value="9" />`, '/p');
+    const program = { body: [{ op: 'setControl', on: { control: 'amount' }, value: '9' }, { op: 'finish', answer: '已填 9' }] };
+    const llm = new FakeLlmAdapter([toolCallTurn('runProgram', { program })]);
+    const host = new FakeHostAdapter(before, { 'control:amount': after });
+    const steps = await collect(createAgent({ llm, host, codeAsAction: true }).run('填9'));
+    const finish = steps.at(-1);
+    expect(finish?.type === 'finish' && finish.answer).not.toContain('未执行任何动作');
+    expect(finish).toMatchObject({ type: 'finish', outcome: 'completed' });
+  });
+
   it('非法程序 → 错误回灌，模型可退而 finish', async () => {
     const llm = new FakeLlmAdapter([
       toolCallTurn('runProgram', { program: { body: [{ op: 'teleport' }] } }),
