@@ -28,8 +28,25 @@ export { createAgent } from './core/loop';
 export type { AgentStep, AgentOptions } from './core/loop';
 export { resolveRef } from './core/refResolver';
 export type { RefResolution } from './core/refResolver';
-export { READ_LOOP_TOOLS, WRITE_TOOLS, ACT_TOOLS, REF_TOOL_KINDS, WRITE_REF_KINDS } from './core/tools';
+export {
+  READ_LOOP_TOOLS,
+  WRITE_TOOLS,
+  ACT_TOOLS,
+  PROGRAM_ACT_TOOLS,
+  RUN_PROGRAM_TOOL,
+  FINISH_TOOL,
+  REF_TOOL_KINDS,
+  WRITE_REF_KINDS,
+} from './core/tools';
 export { serializeSnapshot } from './core/serialize';
+
+// core 切片5：Code-as-Action（带信任不变量的程序化动作）
+export { validateProgram } from './core/program/types';
+export type { Program, Node, Query, Cond } from './core/program/types';
+export { runProgram } from './core/program/interpreter';
+export type { InterpreterDeps, ProgramResult } from './core/program/interpreter';
+export { executeWrite } from './core/execWrite';
+export type { WriteRequest, WriteResult } from './core/execWrite';
 
 // core 4a：跨回合引用 + 长程追踪
 export { CandidateSet, candidatesFromSnapshot } from './core/candidateSet';

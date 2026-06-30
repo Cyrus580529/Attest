@@ -42,6 +42,19 @@ function makeAgent(memory?: PageMemory) {
   });
 }
 
+function makeProgramAgent() {
+  const llm = createOpenAiAdapter({ apiKey: key, baseUrl, model });
+  return createAgent({
+    llm,
+    host: createDomHostAdapter({ getUrl: () => '/board' }),
+    codeAsAction: true,
+    confirm: (intent) => {
+      console.log(`   [HELD] 高风险「${intent.label}」→ 作用域授权：本程序内全部同名动作`);
+      return Promise.resolve({ approved: true, scope: 'all' });
+    },
+  });
+}
+
 function show(step: AgentStep): void {
   if (step.type === 'finish') {
     console.log(`  FINISH [${step.outcome}] ${step.answer}`);
@@ -82,5 +95,11 @@ describe.skipIf(!key)(`live playground (${baseUrl} / ${model})`, () => {
     await drive('第一次（走 LLM）', makeAgent(memory), '列出所有工单并总结一句');
     loadBoard();
     await drive('第二次（应⚡replay）', makeAgent(memory), '列出所有工单并总结一句');
+  }, 180000);
+
+  it('④ Code-as-Action：一段程序批量处理（held + 作用域授权）', async () => {
+    // 期望模型用 runProgram 提交一段 forEach[open, invoke resolve] 程序；
+    // 高危 resolve 首次 held → 授权 scope=all → 后续不再问；每个写仍逐个 verified；finish=completed。
+    await drive('程序化批处理', makeProgramAgent(), '逐个打开每个工单看一眼，然后把它们全部标记为已解决');
   }, 180000);
 });
