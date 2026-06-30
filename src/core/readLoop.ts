@@ -1,12 +1,11 @@
 import type { RefKind } from '../types';
 import type { LlmMessage, LlmToolCall } from '../llm/types';
 import type { HostAdapter } from '../host/types';
-import type { ConfirmFn, Intent } from '../honesty/types';
+import type { ConfirmFn } from '../honesty/types';
 import { REF_TOOL_KINDS, WRITE_REF_KINDS } from './tools';
 import { resolveRef } from './refResolver';
 import { serializeSnapshot } from './serialize';
-import { diffSnapshots } from '../honesty/verifier';
-import { isHighRisk } from '../honesty/riskPolicy';
+import { executeWrite } from './execWrite';
 import { Ledger } from '../honesty/ledger';
 import { guardFinish } from '../honesty/narrationGuard';
 import { memoryKey } from '../memory/pageSignature';
@@ -62,44 +61,16 @@ async function processCall(
   const writeKind: RefKind | undefined = WRITE_REF_KINDS[name];
   if (writeKind) {
     const refId = String(call.arguments.ref ?? '');
-    const res = resolveRef(before, refId, writeKind);
-    if (!res.ok) {
-      ledger.record({ kind: 'error', tool: name, detail: res.error });
-      return { steps: [{ type: 'error', tool: name, refId, error: res.error }], toolResult: `ERROR: ${res.error}` };
-    }
-
-    const steps: AgentStep[] = [];
-    let confirmed = false;
-
-    if (name === 'invokeAction' && isHighRisk(before, refId)) {
-      const action = before.actions.find((a) => a.ref.id === refId);
-      const intent: Intent = {
-        actionRef: refId,
-        label: action?.label ?? refId,
-        expectedEvidence: [`执行 ${action?.name ?? refId} 后页面应发生可观察变化`],
-      };
-      ledger.record({ kind: 'intent', refId, label: intent.label, expectedEvidence: intent.expectedEvidence });
-      steps.push({ type: 'held', tool: name, refId, intent });
-
-      const decision = await confirm(intent);
-      ledger.record({ kind: 'grant', refId, approved: decision.approved });
-      if (!decision.approved) {
-        steps.push({ type: 'cancelled', tool: name, refId, reason: 'user declined' });
-        return { steps, toolResult: 'ACTION CANCELLED: 用户拒绝了该高风险操作。' };
-      }
-      confirmed = true;
-    }
-
     const value = name === 'setControl' ? String(call.arguments.value ?? '') : undefined;
-    const result = name === 'setControl' ? await host.setControl(res.ref, value ?? '') : await host.invokeAction(res.ref);
-    const evidence = diffSnapshots(before, result.snapshot);
-    ledger.record({ kind: 'write', tool: name, refId, verified: evidence.changed, evidence: evidence.details });
-    steps.push({ type: 'action', tool: name, refId, verified: evidence.changed, evidence: evidence.details });
-    const base = evidence.changed
-      ? `done; 证据: ${evidence.details.join('; ')}`
-      : '已执行，但未检测到可观察变化（未验证）。';
-    const toolResult = confirmed ? `（此高风险操作已由用户确认后才执行）${base}` : base;
-    return { steps, toolResult, recorded: { tool: name, ref: recordRef(before, res.ref), value } };
+    // 复用唯一的写原语（verify-or-refuse + 高危 held 只此一处）。读循环无跨调用作用域，
+    // 故传一次性空 scope 集——每次高危仍逐个确认，与历史行为一致。
+    const wr = await executeWrite(host, ledger, confirm, new Set<string>(), {
+      tool: name as 'setControl' | 'invokeAction',
+      refId,
+      value,
+    });
+    const recorded = wr.ref ? { tool: name, ref: recordRef(before, wr.ref), value } : undefined;
+    return { steps: wr.steps, toolResult: wr.toolResult, recorded };
   }
 
   ledger.record({ kind: 'error', tool: name, detail: `unknown tool "${name}"` });

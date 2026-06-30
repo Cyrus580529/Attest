@@ -1,11 +1,11 @@
 import type { HostAdapter } from '../host/types';
 import type { ConfirmFn, Intent } from '../honesty/types';
-import type { AgentStep } from './loop';
+import type { AgentStep } from './loopTypes';
 import { resolveRef } from './refResolver';
 import { isHighRisk } from '../honesty/riskPolicy';
 import { diffSnapshots } from '../honesty/verifier';
 import { Ledger } from '../honesty/ledger';
-import type { RefKind } from '../types';
+import type { Ref, RefKind } from '../types';
 
 export interface WriteRequest {
   tool: 'setControl' | 'invokeAction';
@@ -17,6 +17,8 @@ export interface WriteResult {
   steps: AgentStep[];
   toolResult: string;
   verified: boolean;
+  /** 成功路径回传解析出的 ref，供读循环记忆录制（recordRef）。 */
+  ref?: Ref;
 }
 
 /**
@@ -82,5 +84,5 @@ export async function executeWrite(
     ? `done; 证据: ${evidence.details.join('; ')}`
     : '已执行，但未检测到可观察变化（未验证）。';
   const toolResult = confirmed ? `（此高风险操作已由用户确认后才执行）${base}` : base;
-  return { steps, toolResult, verified: evidence.changed };
+  return { steps, toolResult, verified: evidence.changed, ref: res.ref };
 }
