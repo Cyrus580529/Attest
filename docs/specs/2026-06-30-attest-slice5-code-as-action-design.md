@@ -110,3 +110,14 @@
 4. **DSL 扩展**：object-scoped action、while、变量赋值、多 surface 条件——按真实需求逐项加，不预支。
 
 > 每条演进都是独立切片，各自走 spec→plan→TDD→live 验收。本切片不为它们预留实现，只保证**接缝干净**（execWrite 共享、interpreter 与 loop 解耦、节点集开放扩展）。
+
+## 11. 实现期修订（2026-06-30，与用户确认）
+
+**发现的约束**：已验收的页面记忆功能（loopMemory）也跑在非 readOnly 的 **ping-pong 写路径**上（经 openObject/invokeAction 录制+重放）。若按 §3/§6 把 act 路径**纯替换**为 `[runProgram, finish]`，会连带打断记忆——而"记忆重放程序"恰是本切片**明确 defer** 的，纯替换等于**回退一个已验收功能**，违背"不回退/verify-or-refuse"。
+
+**修订决策（opt-in 开关）**：新增 `AgentOptions.codeAsAction?: boolean`。
+- `codeAsAction: true` 且非 readOnly → act 工具集 = `[runProgram, finish]`，走解释器；**本切片此路径不接记忆**。
+- 默认（不传或 false）→ 现有 ping-pong + 记忆**原样不变**，零回退、零迁移。
+- 演进：待"记忆学会程序"（§10.1）落地后，`codeAsAction` 转为默认、最终下线 ping-pong 写路径。
+
+因此 §9 中"loop.ts 非 readOnly 分流"与 Task 4"迁移 honesty 测试"改为：**新增 codeAsAction 分支 + 新增 loopProgram 测试**，不迁移、不回退既有测试。这是"最小核心→完整核心"演进路径上更干净的一步。

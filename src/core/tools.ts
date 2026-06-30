@@ -8,6 +8,17 @@ const refParam = (desc: string) => ({
   additionalProperties: false,
 });
 
+export const FINISH_TOOL: ToolSchema = {
+  name: 'finish',
+  description: '结束并给出用户可见的最终回答。',
+  parameters: {
+    type: 'object',
+    properties: { answer: { type: 'string', description: '给用户的最终回答' } },
+    required: ['answer'],
+    additionalProperties: false,
+  },
+};
+
 export const READ_LOOP_TOOLS: ToolSchema[] = [
   {
     name: 'observePage',
@@ -17,16 +28,7 @@ export const READ_LOOP_TOOLS: ToolSchema[] = [
   { name: 'readSurface', description: '读取某个 surface 区域的文本内容。', parameters: refParam('surface 的 ref id') },
   { name: 'openObject', description: '打开/选中一个对象以查看更多。', parameters: refParam('object 的 ref id') },
   { name: 'navigate', description: '跳转到某个对象的详情/位置。', parameters: refParam('object 的 ref id') },
-  {
-    name: 'finish',
-    description: '结束并给出用户可见的最终回答。',
-    parameters: {
-      type: 'object',
-      properties: { answer: { type: 'string', description: '给用户的最终回答' } },
-      required: ['answer'],
-      additionalProperties: false,
-    },
-  },
+  FINISH_TOOL,
 ];
 
 export const REF_TOOL_KINDS: Record<string, RefKind> = {
@@ -58,3 +60,30 @@ export const WRITE_REF_KINDS: Record<string, RefKind> = {
 };
 
 export const ACT_TOOLS: ToolSchema[] = [...READ_LOOP_TOOLS, ...WRITE_TOOLS];
+
+/** Code-as-Action：一次性交出一段程序（JSON AST）来完成多步/写操作。 */
+export const RUN_PROGRAM_TOOL: ToolSchema = {
+  name: 'runProgram',
+  description:
+    '一次性提交一段程序（JSON AST）来完成多步/写操作。program = { body: Node[] }；' +
+    'Node.op ∈ observe/forEach/if/open/read/setControl/invoke/finish。' +
+    'forEach{query:{type?,labelContains?},as,do}; if{cond:{surface,contains},then,else?}; ' +
+    'open{on:"$var"}; read{surface}; setControl{on:{control},value}; invoke{action}; finish{answer}。' +
+    '只能引用页面真实暴露的对象/动作/控件/区域名；高危动作会暂停等确认。',
+  parameters: {
+    type: 'object',
+    properties: {
+      program: {
+        type: 'object',
+        description: '程序 AST：{ body: Node[] }',
+        properties: { body: { type: 'array', items: { type: 'object' } } },
+        required: ['body'],
+      },
+    },
+    required: ['program'],
+    additionalProperties: false,
+  },
+};
+
+/** Code-as-Action 模式的 act 工具集：只有 runProgram 与 finish。 */
+export const PROGRAM_ACT_TOOLS: ToolSchema[] = [RUN_PROGRAM_TOOL, FINISH_TOOL];

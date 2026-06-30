@@ -2,9 +2,11 @@ import type { RefKind } from '../types';
 import type { LlmAdapter, LlmMessage, LlmToolCall } from '../llm/types';
 import type { HostAdapter } from '../host/types';
 import type { ConfirmFn, Intent, LedgerEntry, Outcome } from '../honesty/types';
-import { READ_LOOP_TOOLS, ACT_TOOLS, REF_TOOL_KINDS, WRITE_REF_KINDS } from './tools';
+import { READ_LOOP_TOOLS, ACT_TOOLS, PROGRAM_ACT_TOOLS, REF_TOOL_KINDS, WRITE_REF_KINDS } from './tools';
 import { resolveRef } from './refResolver';
 import { serializeSnapshot } from './serialize';
+import { validateProgram, type Program } from './program/types';
+import { runProgram } from './program/interpreter';
 import { diffSnapshots } from '../honesty/verifier';
 import { isHighRisk } from '../honesty/riskPolicy';
 import { Ledger } from '../honesty/ledger';
@@ -29,6 +31,8 @@ export interface AgentOptions {
   maxSteps?: number;
   systemPrompt?: string;
   memory?: PageMemory;
+  /** opt-in：act 模式改用 Code-as-Action（[runProgram, finish]，本切片不接记忆）。 */
+  codeAsAction?: boolean;
 }
 
 const DEFAULT_MAX_STEPS = 12;
@@ -40,6 +44,20 @@ function defaultSystemPrompt(): string {
     '只能引用工具结果里出现过的 ref id，且必须用完整 id（如 object:ticket:101、surface:detail），不要省略前缀或编造。',
     '高风险操作会先暂停等待用户确认；完成时调用 finish 给出用户可见的回答。',
     '无法确认结果时如实说明，不要假装成功。',
+  ].join('\n');
+}
+
+function programSystemPrompt(): string {
+  return [
+    '你是一个网页助手。用 runProgram 一次性提交一段程序（JSON AST）来完成任务，而不是单步往返。',
+    '程序 = { body: Node[] }；可用节点：',
+    '- forEach{query:{type?,labelContains?}, as, do:[]}：遍历匹配对象，用 $as 在 do 里引用当前对象。',
+    '- if{cond:{surface,contains}, then:[], else?:[]}：按某 surface 文本是否含子串分支。',
+    '- open{on:"$var"}：打开/选中对象。read{surface}：读区域文本。',
+    '- setControl{on:{control},value}：设控件值。invoke{action}：触发动作（高危会暂停等确认）。',
+    '- finish{answer}：给用户可见的最终回答。',
+    '只能引用页面真实暴露的 type/名称（见“当前页面”）。高危动作会被暂停确认；无法确认结果时如实说明，不要假装成功。',
+    '若只是回答问题、无需操作，可直接调用 finish。',
   ].join('\n');
 }
 
@@ -186,12 +204,75 @@ async function* attemptReplay(
 export function createAgent(options: AgentOptions) {
   const { llm, host } = options;
   const maxSteps = options.maxSteps ?? DEFAULT_MAX_STEPS;
-  const systemPrompt = options.systemPrompt ?? defaultSystemPrompt();
+  const programMode = !options.readOnly && !!options.codeAsAction;
+  const systemPrompt =
+    options.systemPrompt ?? (programMode ? programSystemPrompt() : defaultSystemPrompt());
   const confirm = options.confirm ?? DENY;
-  const tools = options.readOnly ? READ_LOOP_TOOLS : ACT_TOOLS;
+  const tools = options.readOnly ? READ_LOOP_TOOLS : programMode ? PROGRAM_ACT_TOOLS : ACT_TOOLS;
   const memory = options.memory;
 
+  /** Code-as-Action 模式：播种观察 → 模型交 runProgram → 解释器驱动 → 由账本算 outcome。 */
+  async function* runProgramMode(userMessage: string): AsyncGenerator<AgentStep> {
+    const ledger = new Ledger();
+    const seeded = serializeSnapshot(host.snapshot());
+    const messages: LlmMessage[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `${userMessage}\n\n当前页面：\n${seeded}` },
+    ];
+
+    for (let i = 0; i < maxSteps; i++) {
+      const turn = await llm.step(messages, tools);
+
+      if (turn.toolCalls.length === 0) {
+        yield finishStep(turn.content, ledger);
+        return;
+      }
+      messages.push({ role: 'assistant', content: turn.content, toolCalls: turn.toolCalls });
+
+      let done = false;
+      for (const call of turn.toolCalls) {
+        if (call.name === 'finish') {
+          yield finishStep(String(call.arguments.answer ?? '').trim(), ledger);
+          return;
+        }
+        if (call.name === 'runProgram') {
+          const errors = validateProgram(call.arguments.program);
+          if (errors.length > 0) {
+            const detail = errors.join('; ');
+            ledger.record({ kind: 'error', tool: 'runProgram', detail });
+            yield { type: 'error', tool: 'runProgram', error: detail };
+            messages.push({ role: 'tool', toolCallId: call.id, content: `ERROR: 程序非法: ${detail}` });
+            continue;
+          }
+          const result = yield* runProgram(call.arguments.program as Program, { host, ledger, confirm });
+          const guarded = guardFinish(result.answer.trim() || '（程序已执行）', ledger.entries);
+          const outcome =
+            result.aborted && guarded.outcome === 'completed' ? 'failed' : guarded.outcome;
+          yield { type: 'finish', answer: guarded.answer, outcome, ledger: ledger.toJSON() };
+          done = true;
+          break;
+        }
+        ledger.record({ kind: 'error', tool: call.name, detail: `unknown tool "${call.name}"` });
+        yield { type: 'error', tool: call.name, error: `unknown tool "${call.name}"` };
+        messages.push({ role: 'tool', toolCallId: call.id, content: 'ERROR: unknown tool' });
+      }
+      if (done) return;
+    }
+
+    const guarded = guardFinish('我没能在限定步数内完成这个任务，没有可确认的结果。', ledger.entries);
+    yield {
+      type: 'finish',
+      answer: guarded.answer,
+      outcome: guarded.outcome === 'completed' ? 'failed' : guarded.outcome,
+      ledger: ledger.toJSON(),
+    };
+  }
+
   async function* run(userMessage: string): AsyncGenerator<AgentStep> {
+    if (programMode) {
+      yield* runProgramMode(userMessage);
+      return;
+    }
     const ledger = new Ledger();
     const recorded: RecordedStep[] = [];
     const key = memory ? memoryKey(host.snapshot(), userMessage) : '';

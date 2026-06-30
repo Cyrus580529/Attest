@@ -61,7 +61,9 @@ Commit: `feat(program): ProgramInterpreter（async 求值 + 挂起 held + 错误
 ---
 
 ## Task 4：loop 集成（act → runProgram/finish）
-**Files:** `src/core/tools.ts`、`src/core/loop.ts`；`test/core/loopHonesty.test.ts`（迁移）
+> **修订（见 spec §11）**：发现页面记忆也跑在 ping-pong 写路径，纯替换会回退已验收功能。改为 **opt-in 开关 `codeAsAction`**：开→act 用 [runProgram,finish]（不接记忆）；默认→ping-pong+记忆原样不变。**不迁移既有测试，改为新增 `loopProgram` 测试**。
+
+**Files:** `src/core/tools.ts`、`src/core/loop.ts`；`test/core/loopProgram.test.ts`（新增）
 
 - tools.ts：新增 `runProgram` schema（参数 `{ program }`）；`ACT_TOOLS = [runProgram_tool, finish_tool]`。READ_LOOP_TOOLS 不变。
 - loop.ts：非 readOnly 时，run() 先播种 `serializeSnapshot(host.snapshot())` 进初始上下文；llm.step 返回 `runProgram`→交 ProgramInterpreter 驱动（yield 其 steps，用其 outcome finish）；返回 `finish`→直接收尾；readOnly 路径完全不变。系统提示补：act 模式用 runProgram 表达多步/写动作。
