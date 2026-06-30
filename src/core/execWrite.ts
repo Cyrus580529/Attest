@@ -47,16 +47,25 @@ export async function executeWrite(
   const steps: AgentStep[] = [];
   let confirmed = false;
 
-  if (req.tool === 'invokeAction' && isHighRisk(before, req.refId)) {
-    const action = before.actions.find((a) => a.ref.id === req.refId);
-    const actionName = action?.name ?? req.refId;
-    if (grantedScopes.has(actionName)) {
+  // 来源感知信任：高危 invoke → held（原有）；任何 inferred（推断而非声明）的写 → 也 held。
+  // 因为推断的 handle 我们没那么确定它的语义，"不确定就问"。
+  const targetNode =
+    req.tool === 'setControl'
+      ? before.controls.find((c) => c.ref.id === req.refId)
+      : before.actions.find((a) => a.ref.id === req.refId);
+  const highRisk = req.tool === 'invokeAction' && isHighRisk(before, req.refId);
+  const inferred = targetNode?.provenance === 'inferred';
+
+  if (highRisk || inferred) {
+    const name = targetNode?.name ?? req.refId;
+    if (grantedScopes.has(name)) {
       confirmed = true; // 作用域已授权，本 run 内不再追问
     } else {
+      const note = highRisk ? '（高风险）' : '（来源：推断，未声明契约）';
       const intent: Intent = {
         actionRef: req.refId,
-        label: action?.label ?? req.refId,
-        expectedEvidence: [`执行 ${actionName} 后页面应发生可观察变化`],
+        label: `${targetNode?.label ?? req.refId}${note}`,
+        expectedEvidence: [`执行 ${name} 后页面应发生可观察变化`],
       };
       ledger.record({ kind: 'intent', refId: req.refId, label: intent.label, expectedEvidence: intent.expectedEvidence });
       steps.push({ type: 'held', tool: req.tool, refId: req.refId, intent });
@@ -65,10 +74,10 @@ export async function executeWrite(
       ledger.record({ kind: 'grant', refId: req.refId, approved: decision.approved, scope: decision.scope });
       if (!decision.approved) {
         steps.push({ type: 'cancelled', tool: req.tool, refId: req.refId, reason: 'user declined' });
-        return { steps, toolResult: 'ACTION CANCELLED: 用户拒绝了该高风险操作。', verified: false };
+        return { steps, toolResult: 'ACTION CANCELLED: 用户拒绝了该写操作。', verified: false };
       }
       confirmed = true;
-      if (decision.scope === 'all') grantedScopes.add(actionName);
+      if (decision.scope === 'all') grantedScopes.add(name);
     }
   }
 

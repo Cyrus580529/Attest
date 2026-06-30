@@ -3,6 +3,7 @@ import { parseContract } from '../../src/contract/parseContract';
 import { FakeHostAdapter } from '../../src/testing/fakeHostAdapter';
 import { Ledger } from '../../src/honesty/ledger';
 import { executeWrite } from '../../src/core/execWrite';
+import { inferContract } from '../../src/contract/inferContract';
 import type { ConfirmFn } from '../../src/honesty/types';
 
 beforeEach(() => {
@@ -84,6 +85,58 @@ describe('executeWrite', () => {
     expect(scopes.has('resolve')).toBe(true);
     await executeWrite(host, new Ledger(), confirm, scopes, { tool: 'invokeAction', refId: 'action:resolve' });
     expect(calls).toBe(1); // 第二次未再调 confirm
+  });
+
+  it('来源感知：inferred 控件 setControl → held（即便非高危）', async () => {
+    document.body.innerHTML = `<label for="q">数量</label><input id="q" value="0"/>`;
+    const before = inferContract(document.body, '/p').snapshot;
+    const host = new FakeHostAdapter(before); // 无 transition；DENY 会先 held 再取消
+    const r = await executeWrite(host, new Ledger(), DENY, new Set(), {
+      tool: 'setControl',
+      refId: 'control:数量',
+      value: '5',
+    });
+    expect(r.steps.some((s) => s.type === 'held')).toBe(true);
+    expect(r.steps.some((s) => s.type === 'cancelled')).toBe(true);
+    expect(r.verified).toBe(false);
+  });
+
+  it('来源感知：inferred 低危 invoke（如"保存"）→ 也 held', async () => {
+    document.body.innerHTML = `<button>保存</button>`;
+    const before = inferContract(document.body, '/p').snapshot;
+    const host = new FakeHostAdapter(before);
+    const r = await executeWrite(host, new Ledger(), DENY, new Set(), {
+      tool: 'invokeAction',
+      refId: 'action:保存',
+    });
+    expect(r.steps.some((s) => s.type === 'held')).toBe(true);
+    expect(r.steps.some((s) => s.type === 'cancelled')).toBe(true);
+  });
+
+  it('来源感知：inferred 写 approve → 正常执行验证', async () => {
+    document.body.innerHTML = `<label for="q">数量</label><input id="q" value="0"/>`;
+    const before = inferContract(document.body, '/p').snapshot;
+    document.body.innerHTML = `<label for="q">数量</label><input id="q" value="5"/>`;
+    const after = inferContract(document.body, '/p').snapshot;
+    const host = new FakeHostAdapter(before, { 'control:数量': after });
+    const r = await executeWrite(host, new Ledger(), APPROVE_ONCE, new Set(), {
+      tool: 'setControl',
+      refId: 'control:数量',
+      value: '5',
+    });
+    expect(r.steps.some((s) => s.type === 'held')).toBe(true);
+    expect(r.verified).toBe(true);
+  });
+
+  it('authored 低危 setControl → 不 held（来源感知不误伤声明契约）', async () => {
+    const before = makeSnap(`<input data-agent-control="qty" value="0"/>`);
+    const host = new FakeHostAdapter(before);
+    const r = await executeWrite(host, new Ledger(), DENY, new Set(), {
+      tool: 'setControl',
+      refId: 'control:qty',
+      value: '5',
+    });
+    expect(r.steps.some((s) => s.type === 'held')).toBe(false);
   });
 
   it('ref 未命中 → error step，不执行', async () => {

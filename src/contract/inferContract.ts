@@ -37,7 +37,7 @@ export function inferContract(root: ParentNode, url: string): InferResult {
     if (!label) continue;
     oi += 1;
     const ref = minter.mint('object', `item:${oi}`);
-    objects.push({ ref, type: 'item', objectId: String(oi), label });
+    objects.push({ ref, type: 'item', objectId: String(oi), label, provenance: 'inferred' });
     elements.set(ref.id, el);
   }
 
@@ -47,7 +47,7 @@ export function inferContract(root: ParentNode, url: string): InferResult {
     if (!label) continue;
     const risk: Risk = HIGH_RISK.test(label) ? 'high' : 'low';
     const ref = minter.mint('action', label);
-    actions.push({ ref, name: label, label, risk });
+    actions.push({ ref, name: label, label, risk, provenance: 'inferred' });
     elements.set(ref.id, el);
   }
 
@@ -61,7 +61,7 @@ export function inferContract(root: ParentNode, url: string): InferResult {
       'field';
     const value = 'value' in el ? String((el as HTMLInputElement).value) : null;
     const ref = minter.mint('control', name);
-    controls.push({ ref, name, label: name, value });
+    controls.push({ ref, name, label: name, value, provenance: 'inferred' });
     elements.set(ref.id, el);
   }
 
@@ -69,7 +69,7 @@ export function inferContract(root: ParentNode, url: string): InferResult {
   for (const el of root.querySelectorAll('[role="region"], [role="status"], [role="alert"], output, section[aria-label]')) {
     const name = clean(el.getAttribute('aria-label')) || clean(el.getAttribute('role')) || 'region';
     const ref = minter.mint('surface', name);
-    surfaces.push({ ref, name, text: clean(el.textContent) });
+    surfaces.push({ ref, name, text: clean(el.textContent), provenance: 'inferred' });
     elements.set(ref.id, el);
   }
 

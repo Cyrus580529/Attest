@@ -8,11 +8,15 @@ export interface Ref {
 
 export type Risk = 'low' | 'high';
 
+/** handle 的来源：authored=页面用 data-agent-* 声明；inferred=从语义/ARIA 推断。未设视为 authored。 */
+export type Provenance = 'authored' | 'inferred';
+
 export interface ObjectNode {
   readonly ref: Ref; // kind: 'object'
   readonly type: string; // 如 "task"
   readonly objectId: string; // 如 "42"
   readonly label: string;
+  readonly provenance?: Provenance;
 }
 
 export interface ActionNode {
@@ -20,6 +24,7 @@ export interface ActionNode {
   readonly name: string; // 如 "apply"
   readonly label: string;
   readonly risk: Risk;
+  readonly provenance?: Provenance;
 }
 
 export interface ControlNode {
@@ -27,12 +32,14 @@ export interface ControlNode {
   readonly name: string;
   readonly label: string;
   readonly value: string | null;
+  readonly provenance?: Provenance;
 }
 
 export interface SurfaceNode {
   readonly ref: Ref; // kind: 'surface'
   readonly name: string;
   readonly text: string;
+  readonly provenance?: Provenance;
 }
 
 export interface PageSnapshot {
