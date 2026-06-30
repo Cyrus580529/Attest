@@ -63,12 +63,20 @@ npx vitest run test/live   # 脚本化 live 场景
 
 ## 六、现状与开放线（2026-06-30）
 
-**已完成并经真模型验收**（master，49 commits，88 测试绿）：契约层 / 单 tool-calling 读循环 / 诚实三件套（verifier+ledger+narrationGuard+高危held，Intent Receipt 两阶段）/ 长程+引用 / 页面记忆（零-LLM 重放+失效回退）。live REPL 已验证：长程 completed、高危真 held（y/N）、记忆真 ⚡replay、cancelled/completed 证据一致。
+**已完成并经真模型验收**（master，125 测试绿）：
+- 契约层 / 单 tool-calling 读循环 / 诚实三件套（verifier+ledger+narrationGuard+高危held，Intent Receipt 两阶段）/ 长程+引用 / 页面记忆（零-LLM 重放+失效回退）。
+- **切片5 Code-as-Action（已 ship + live 验收）**：opt-in `codeAsAction` 开关 → "交清单"范式。模型一次交 JSON-AST 程序，**可挂起解释器**逐节点对实时快照校验执行；高危挂起式 held + **作用域授权**（y/a/N）；写写独立 verify；**三段式 plan→execute→reflect**（计划预览=高层里程碑 + 💭思考 + 看真实结果后复盘）；outcome 增 `partial`、finish 带证据小结。默认 ping-pong/记忆/读循环**零回归**。设计见 `docs/specs/…slice5…design.md`（§11 opt-in、§12 三段式）。
+- live REPL（`/code` 切换）已验证：真用 runProgram、held 真停、scope 授权生效、completed/partial 与账本一致、复盘不谎报。
+
+**两次 live 暴露并已修的诚实洞**（教训：洞都在"叙述/finish 边界"——内核只管经工具路由的动作，管不住模型用散文宣称没干过的事）：① 空账本谎报（直接 finish 编成功）→ 加注+守卫；② 部分取消被掩盖（混合批准/拒绝报 completed）→ partial outcome + 证据小结 + reflect。
 
 **已知开放线**：
-1. `CandidateSet`/`ReferenceResolver` 已单测但**未接进 live 循环**——live 的"换一个/就它"目前靠 LLM 上下文。接线是 TODO。
-2. **Code-as-Action** 是候选 v2 范式（让模型写 ref 绑定的小程序，而非单步乒乓）：更灵活、更少往返、且能保住全部信任不变量，并让记忆/长程更自然。若步进循环仍显僵，先 brainstorm 当独立切片再动。
-3. 记忆重放会双行打印（replay 标记 + observation），轻微啰嗦，可后续收敛。
+1. **记忆学会程序**：`codeAsAction` 路径当前**不接记忆**；接上录制+零-LLM 重放后，开关可转默认、ping-pong 写路径退休。
+2. `CandidateSet`/`ReferenceResolver` 已单测但**未接进 live 循环**；与程序 `forEach`/`query` 打通"换一个/就它"。
+3. **per-object 账本**：invoke 按动作名记账、不记"作用在哪个对象"，故复盘只能到动作级 tally；记上对象上下文 → 可精确归因（"102 被取消"）。
+4. **多程序/重规划**：复盘后若未达成，允许再出一段（当前一段+一次复盘）。
+5. **叙述-诚实的原则化**：两个洞都是 reactive 补的；更稳的做法是让用户可见的"结果陈述"由证据账本**生成**，模型只做受约束的措辞（把 verify-or-refuse 从"动作"推广到"叙述"）。
+6. 记忆重放双行打印、全成功时冗余证据小结——轻微啰嗦，可收敛。
 
 ## 七、命令速查
 
