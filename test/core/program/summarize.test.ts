@@ -17,8 +17,8 @@ function board() {
   return parseContract(document.body, '/board');
 }
 
-describe('summarizeProgram（从程序 AST 推导人话计划）', () => {
-  it('forEach 展开为每个对象的具体步骤，用标题与动作名而非 ref id', () => {
+describe('summarizeProgram（高层里程碑，精确留给账本）', () => {
+  it('forEach 收成一行里程碑：对 N 个对象做某事，不逐个摊开', () => {
     const program: Program = {
       body: [
         {
@@ -33,23 +33,19 @@ describe('summarizeProgram（从程序 AST 推导人话计划）', () => {
         { op: 'finish', answer: 'done' },
       ],
     };
-    expect(summarizeProgram(program, board())).toEqual([
-      '打开「登录页 500 错误」',
-      '标记为已解决（登录页 500 错误）',
-      '打开「导出 CSV 乱码」',
-      '标记为已解决（导出 CSV 乱码）',
-    ]);
+    expect(summarizeProgram(program, board())).toEqual(['对 2 个 ticket：打开、标记为已解决']);
   });
 
-  it('if 条件渲染为“若…则”，setControl/read 也人话化', () => {
+  it('if 收成一行；顶层 setControl/open 各一行人话', () => {
     const program: Program = {
       body: [
         { op: 'if', cond: { surface: 'detail', contains: 'urgent' }, then: [{ op: 'read', surface: 'detail' }] },
+        { op: 'setControl', on: { control: 'amount' }, value: '5' },
       ],
     };
     expect(summarizeProgram(program, board())).toEqual([
-      '若「detail」含“urgent”，则：',
-      '　查看「detail」区域',
+      '若「detail」含“urgent”，则：查看「detail」',
+      '把「amount」设为 5',
     ]);
   });
 

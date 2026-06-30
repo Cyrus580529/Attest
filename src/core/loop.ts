@@ -21,6 +21,7 @@ export type AgentStep =
   | { type: 'held'; tool: string; refId: string; intent: Intent }
   | { type: 'cancelled'; tool: string; refId: string; reason: string }
   | { type: 'replay'; tool: string; refId?: string }
+  | { type: 'thinking'; text: string }
   | { type: 'plan'; items: string[] }
   | { type: 'error'; tool: string; refId?: string; error: string }
   | { type: 'finish'; answer: string; outcome: Outcome; ledger: LedgerEntry[] };
@@ -62,6 +63,7 @@ function programSystemPrompt(): string {
     '- finish{answer}：在程序末尾给出用户可见的最终回答（只陈述真实发生的事）。',
     '示例——把所有工单逐个打开并标记为已解决：',
     'runProgram({ body: [ { op:"forEach", query:{type:"ticket"}, as:"t", do:[ { op:"open", on:"$t" }, { op:"invoke", action:"resolve" } ] }, { op:"finish", answer:"已逐个打开并标记为已解决" } ] })',
+    '在调用 runProgram 前，先用一句话（普通文本）简述你的思路，便于用户理解你打算怎么做。',
     '只能引用“当前页面”里真实暴露的 type/名称，不可编造。高危动作会被暂停等你确认；无法确认结果时如实说明，绝不假装成功。',
     '只有当用户纯粹在问问题、完全不需要操作页面时，才直接调用顶层 finish 作答。',
   ].join('\n');
@@ -296,6 +298,7 @@ export function createAgent(options: AgentOptions) {
             continue;
           }
           const program = call.arguments.program as Program;
+          if (turn.content.trim()) yield { type: 'thinking', text: turn.content.trim() };
           const planItems = summarizeProgram(program, host.snapshot());
           if (planItems.length > 0) yield { type: 'plan', items: planItems };
           const result = yield* runProgram(program, { host, ledger, confirm });

@@ -51,11 +51,15 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 
 function show(s: Record<string, unknown>): void {
   const t = s.type as string;
-  if (t === 'plan') {
+  if (t === 'thinking') {
+    console.log(`\x1b[2m💭 ${String(s.text)}\x1b[0m`);
+  } else if (t === 'plan') {
     const items = s.items as string[];
-    console.log('\x1b[1m📋 我打算这样做：\x1b[0m');
-    items.forEach((it, i) => console.log(`   ${i + 1}. ${it}`));
-    console.log('\x1b[2m   ——开始执行——\x1b[0m');
+    if (items.length === 1) console.log(`\x1b[1m▸ ${items[0]}\x1b[0m`);
+    else {
+      console.log('\x1b[1m▸ 计划：\x1b[0m');
+      items.forEach((it) => console.log(`   · ${it}`));
+    }
   } else if (t === 'finish') {
     const labels: Record<string, string> = {
       completed: '\x1b[32m✅ 完成\x1b[0m',
@@ -135,7 +139,7 @@ for (;;) {
       // Claude Code 式停顿：执行步之间留一点节奏，逐条推进而非一瞬间糊上去
       const t = (step as { type: string }).type;
       if (t === 'observation' || t === 'action' || t === 'replay') await sleep(380);
-      else if (t === 'plan') await sleep(150);
+      else if (t === 'plan' || t === 'thinking') await sleep(200);
       show(step as unknown as Record<string, unknown>);
     }
   } catch (e) {

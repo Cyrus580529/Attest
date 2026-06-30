@@ -86,6 +86,24 @@ describe('loop code-as-action (codeAsAction)', () => {
     expect(plan?.type === 'plan' && plan.items).toContain('把「amount」设为 5');
   });
 
+  it('显示思考：模型生成程序时的推理(content)作为 thinking 步呈现，在计划之前', async () => {
+    const before = build(`<input data-agent-control="amount" value="0" />`);
+    const after = build(`<input data-agent-control="amount" value="5" />`, '/p');
+    const program = { body: [{ op: 'setControl', on: { control: 'amount' }, value: '5' }, { op: 'finish', answer: 'ok' }] };
+    const llm = new FakeLlmAdapter([
+      { content: '我先把金额填成 5', toolCalls: [{ id: 'c1', name: 'runProgram', arguments: { program } }] },
+      toolCallTurn('finish', { answer: '已填好' }),
+    ]);
+    const host = new FakeHostAdapter(before, { 'control:amount': after });
+    const steps = await collect(createAgent({ llm, host, codeAsAction: true }).run('填5'));
+    const thinkIdx = steps.findIndex((s) => s.type === 'thinking');
+    const planIdx = steps.findIndex((s) => s.type === 'plan');
+    const think = steps[thinkIdx];
+    expect(think?.type === 'thinking' && think.text).toBe('我先把金额填成 5');
+    expect(thinkIdx).toBeGreaterThanOrEqual(0);
+    expect(thinkIdx).toBeLessThan(planIdx); // 思考在计划之前
+  });
+
   it('三段式：执行后有一个复盘回合，最终回答来自看到真实结果后的反思，而非程序里写死的话', async () => {
     const before = build(`<input data-agent-control="amount" value="0" />`);
     const after = build(`<input data-agent-control="amount" value="7" />`, '/p');
