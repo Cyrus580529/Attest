@@ -16,16 +16,8 @@ import { memoryKey, pageSignature } from '../memory/pageSignature';
 import { PageMemory, recordRef, resolveRecordedRef, type RecordedStep } from '../memory/pageMemory';
 import { RecipeBook, type Recipe } from '../memory/recipeBook';
 
-export type AgentStep =
-  | { type: 'observation'; tool: string; refId?: string; result: string }
-  | { type: 'action'; tool: string; refId: string; verified: boolean; evidence: string[] }
-  | { type: 'held'; tool: string; refId: string; intent: Intent }
-  | { type: 'cancelled'; tool: string; refId: string; reason: string }
-  | { type: 'replay'; tool: string; refId?: string }
-  | { type: 'thinking'; text: string }
-  | { type: 'plan'; items: string[] }
-  | { type: 'error'; tool: string; refId?: string; error: string }
-  | { type: 'finish'; answer: string; outcome: Outcome; ledger: LedgerEntry[] };
+export type { AgentStep } from './loopTypes';
+import type { AgentStep } from './loopTypes';
 
 export interface AgentOptions {
   llm: LlmAdapter;
