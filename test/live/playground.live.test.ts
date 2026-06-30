@@ -5,6 +5,8 @@ import { createAgent, type AgentStep } from '../../src/core/loop';
 import { createDomHostAdapter } from '../../src/adapters/domHostAdapter';
 import { createOpenAiAdapter } from '../../src/llm/openaiAdapter';
 import { PageMemory } from '../../src/memory/pageMemory';
+import { RecipeBook } from '../../src/memory/recipeBook';
+import { pageSignature } from '../../src/memory/pageSignature';
 
 // 跑法（PowerShell）：
 //   $env:ATTEST_API_KEY="sk-..."; $env:ATTEST_BASE_URL="https://www.kamiapi.top/v1"; $env:ATTEST_MODEL="gpt-5.5"; npx vitest run test/live
@@ -42,12 +44,13 @@ function makeAgent(memory?: PageMemory) {
   });
 }
 
-function makeProgramAgent() {
+function makeProgramAgent(recipes?: RecipeBook) {
   const llm = createOpenAiAdapter({ apiKey: key, baseUrl, model });
   return createAgent({
     llm,
     host: createDomHostAdapter({ getUrl: () => '/board' }),
     codeAsAction: true,
+    recipes,
     confirm: (intent) => {
       console.log(`   [HELD] 高风险「${intent.label}」→ 作用域授权：本程序内全部同名动作`);
       return Promise.resolve({ approved: true, scope: 'all' });
@@ -106,4 +109,16 @@ describe.skipIf(!key)(`live playground (${baseUrl} / ${model})`, () => {
     // 高危 resolve 首次 held → 授权 scope=all → 后续不再问；每个写仍逐个 verified；finish=completed。
     await drive('程序化批处理', makeProgramAgent(), '逐个打开每个工单看一眼，然后把它们全部标记为已解决');
   }, 180000);
+
+  it('⑤ 配方先验：同任务第二次注入历史程序（应更稳/更快，且不机械、不谎报）', async () => {
+    // 第一次成功 → 程序入 RecipeBook；第二次同签名页面召回注入。
+    // 验收判据（非全绿，看真模型）：第二次是否合理复用结构、仍走完整 plan→execute→reflect、
+    // outcome 与账本一致、绝不因配方误动或谎报已取消/未验证的动作为完成。
+    const recipes = new RecipeBook();
+    await drive('第一次（无先验，成功后入库）', makeProgramAgent(recipes), '把每个工单都标记为已解决');
+    loadBoard();
+    const hits = recipes.recall(pageSignature(createDomHostAdapter({ getUrl: () => '/board' }).snapshot()), 3).length;
+    console.log(`\n   [配方库] 第二次运行前已积累 ${hits} 条配方`);
+    await drive('第二次（注入先验配方）', makeProgramAgent(recipes), '把每个工单都标记为已解决');
+  }, 240000);
 });
