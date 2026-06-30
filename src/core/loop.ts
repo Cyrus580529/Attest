@@ -12,8 +12,9 @@ import { diffSnapshots } from '../honesty/verifier';
 import { isHighRisk } from '../honesty/riskPolicy';
 import { Ledger } from '../honesty/ledger';
 import { guardFinish } from '../honesty/narrationGuard';
-import { memoryKey } from '../memory/pageSignature';
+import { memoryKey, pageSignature } from '../memory/pageSignature';
 import { PageMemory, recordRef, resolveRecordedRef, type RecordedStep } from '../memory/pageMemory';
+import { RecipeBook, type Recipe } from '../memory/recipeBook';
 
 export type AgentStep =
   | { type: 'observation'; tool: string; refId?: string; result: string }
@@ -34,8 +35,10 @@ export interface AgentOptions {
   maxSteps?: number;
   systemPrompt?: string;
   memory?: PageMemory;
-  /** opt-in：act 模式改用 Code-as-Action（[runProgram, finish]，本切片不接记忆）。 */
+  /** opt-in：act 模式改用 Code-as-Action（[runProgram, finish]）。 */
   codeAsAction?: boolean;
+  /** opt-in：codeAsAction 路径的配方先验——成功程序录入、同签名页面召回注入（不做 verbatim 重放）。 */
+  recipes?: RecipeBook;
 }
 
 const DEFAULT_MAX_STEPS = 12;
@@ -174,6 +177,14 @@ function factualLedgerSummary(entries: readonly LedgerEntry[]): string {
   return lines.length > 0 ? lines.join('；') : '没有执行任何动作';
 }
 
+/** 把召回的配方拼成给模型的先验块：目标标签 + 可再发的紧凑 JSON 程序（吻合与否由模型判断）。 */
+function formatRecipes(recipes: Recipe[]): string {
+  const blocks = recipes.map(
+    (r, i) => `配方${i + 1}（曾用于「${r.goal}」）：\n${JSON.stringify(r.program)}`,
+  );
+  return `本页面上，以下程序曾被验证成功——可参考、改写或弃用，请自行判断是否吻合当前任务：\n${blocks.join('\n\n')}`;
+}
+
 function finishStep(answer: string, ledger: Ledger): AgentStep {
   const guarded = guardFinish(answer.trim(), ledger.entries);
   return { type: 'finish', answer: guarded.answer, outcome: guarded.outcome, ledger: ledger.toJSON() };
@@ -232,14 +243,18 @@ export function createAgent(options: AgentOptions) {
   const confirm = options.confirm ?? DENY;
   const tools = options.readOnly ? READ_LOOP_TOOLS : programMode ? PROGRAM_ACT_TOOLS : ACT_TOOLS;
   const memory = options.memory;
+  const recipes = options.recipes;
 
   /** Code-as-Action 模式：播种观察 → 模型交 runProgram → 解释器驱动 → 由账本算 outcome。 */
   async function* runProgramMode(userMessage: string): AsyncGenerator<AgentStep> {
     const ledger = new Ledger();
+    const recipeSignature = recipes ? pageSignature(host.snapshot()) : '';
     const seeded = serializeSnapshot(host.snapshot());
+    const recalled = recipes ? recipes.recall(recipeSignature, 3) : [];
+    const prior = recalled.length > 0 ? `\n\n${formatRecipes(recalled)}` : '';
     const messages: LlmMessage[] = [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: `${userMessage}\n\n当前页面：\n${seeded}` },
+      { role: 'user', content: `${userMessage}\n\n当前页面：\n${seeded}${prior}` },
     ];
 
     // 程序模式收尾：outcome 与证据小结全由账本算，绝不替模型自述背书（defense-in-depth）。
@@ -317,7 +332,12 @@ export function createAgent(options: AgentOptions) {
           const reflect = await llm.step(messages, [FINISH_TOOL]);
           const reflectCall = reflect.toolCalls.find((c) => c.name === 'finish');
           const reflectAnswer = (reflectCall ? String(reflectCall.arguments.answer ?? '') : reflect.content).trim();
-          yield programFinish(reflectAnswer || result.answer.trim() || '（程序已执行）', result.aborted);
+          const fin = programFinish(reflectAnswer || result.answer.trim() || '（程序已执行）', result.aborted);
+          // 录制：只在程序真正 completed 且未 abort 时入库——partial/cancelled/failed 不背书为可复用配方。
+          if (recipes && fin.type === 'finish' && fin.outcome === 'completed' && !result.aborted) {
+            recipes.record(recipeSignature, { program, goal: userMessage, recordedAt: Date.now() });
+          }
+          yield fin;
           done = true;
           break;
         }
