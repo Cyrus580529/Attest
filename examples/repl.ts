@@ -27,6 +27,8 @@ const { createAgent } = await import('../src/core/loop');
 const { createDomHostAdapter } = await import('../src/adapters/domHostAdapter');
 const { createOpenAiAdapter } = await import('../src/llm/openaiAdapter');
 const { PageMemory } = await import('../src/memory/pageMemory');
+const { RecipeBook } = await import('../src/memory/recipeBook');
+const { pageSignature } = await import('../src/memory/pageSignature');
 
 const html = readFileSync(resolve(process.cwd(), 'examples/mini-board/index.html'), 'utf8');
 const rl = readline.createInterface({ input, output });
@@ -45,7 +47,9 @@ function loadBoard(): void {
 }
 
 let memory: InstanceType<typeof PageMemory> | undefined = new PageMemory();
+const recipes = new RecipeBook(); // Code-as-Action 配方先验：会话内成功程序累积、同签名召回注入
 let programMode = false; // Code-as-Action 开关（/code 切换）
+const host = createDomHostAdapter({ getUrl: () => '/board' });
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -91,9 +95,10 @@ function show(s: Record<string, unknown>): void {
 function makeAgent() {
   return createAgent({
     llm: createOpenAiAdapter({ apiKey: key, baseUrl, model, fetchImpl: nodeFetch }),
-    host: createDomHostAdapter({ getUrl: () => '/board' }),
-    // Code-as-Action 模式下不接记忆（本切片 defer）
+    host,
+    // 挤牙膏模式用 PageMemory（零-LLM 重放）；Code-as-Action 用 RecipeBook（配方先验注入）
     memory: programMode ? undefined : memory,
+    recipes: programMode ? recipes : undefined,
     codeAsAction: programMode,
     confirm: async (intent) => {
       const a = (
@@ -130,9 +135,13 @@ for (;;) {
   if (line === '/code') {
     programMode = !programMode;
     console.log(
-      `（已切到${programMode ? '“交清单”模式 Code-as-Action：一次提交一段程序，高危可三选 y/a/N，本模式不接记忆' : '“挤牙膏”单步模式（默认，含记忆）'}）`,
+      `（已切到${programMode ? '“交清单”模式 Code-as-Action：一次提交一段程序，高危可三选 y/a/N，成功程序入配方先验' : '“挤牙膏”单步模式（默认，含记忆）'}）`,
     );
     continue;
+  }
+  if (programMode) {
+    const hits = recipes.recall(pageSignature(host.snapshot()), 3).length;
+    if (hits > 0) console.log(`\x1b[2m📓 已注入 ${hits} 条历史配方作为先验（模型自行判断是否复用）\x1b[0m`);
   }
   try {
     for await (const step of makeAgent().run(line)) {
