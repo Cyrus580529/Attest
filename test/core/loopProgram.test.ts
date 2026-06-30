@@ -188,6 +188,21 @@ describe('loop code-as-action (codeAsAction)', () => {
     expect(seed).not.toContain('共 3 个');
   });
 
+  it('读取闭环：复盘回合拿得到最终 surface 文本（不再只喂账本计数）', async () => {
+    const before = build(`<div data-agent-object="task:1">登录超时</div><section data-agent-surface="detail">（未选择）</section>`, '/w');
+    const opened = build(`<div data-agent-object="task:1">登录超时</div><section data-agent-surface="detail">任务1：登录超时 — 负责人:未指派</section>`, '/w');
+    const program = { body: [{ op: 'open', on: 'object:task:1' }, { op: 'read', surface: 'detail' }, { op: 'finish', answer: '读完了' }] };
+    const llm = new FakeLlmAdapter([
+      toolCallTurn('runProgram', { program }),
+      toolCallTurn('finish', { answer: '负责人未指派' }),
+    ]);
+    const host = new FakeHostAdapter(before, { 'object:task:1': opened });
+    await collect(createAgent({ llm, host, codeAsAction: true }).run('看任务1详情'));
+    const reflectMsgs = llm.calls[1]?.messages ?? [];
+    const sawSurface = reflectMsgs.some((m) => typeof m.content === 'string' && m.content.includes('负责人:未指派'));
+    expect(sawSurface).toBe(true);
+  });
+
   it('非法程序 → 错误回灌，模型可退而 finish', async () => {
     const llm = new FakeLlmAdapter([
       toolCallTurn('runProgram', { program: { body: [{ op: 'teleport' }] } }),

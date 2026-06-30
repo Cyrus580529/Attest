@@ -36,6 +36,14 @@ function outlineObjects(objects: readonly ObjectNode[], maxPerType: number): str
   return lines;
 }
 
+/** 各 surface 的可见文本——页面的"可读内容"，喂给复盘回合好让读取类任务转述所读。 */
+export function serializeSurfaceTexts(s: PageSnapshot): string {
+  return s.surfaces
+    .filter((su) => su.text.trim().length > 0)
+    .map((su) => `${su.name}: ${su.text}`)
+    .join('；');
+}
+
 export function serializeSnapshot(s: PageSnapshot, opts: SerializeOptions = {}): string {
   const lines: string[] = [`url: ${s.url}`];
   if (opts.maxPerType === undefined) {

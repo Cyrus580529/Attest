@@ -1,6 +1,6 @@
 import type { LlmMessage } from '../llm/types';
 import { FINISH_TOOL } from './tools';
-import { serializeSnapshot } from './serialize';
+import { serializeSnapshot, serializeSurfaceTexts } from './serialize';
 import { validateProgram, type Program } from './program/types';
 import { runProgram } from './program/interpreter';
 import { summarizeProgram } from './program/summarize';
@@ -61,11 +61,15 @@ export async function* runProgramLoop(deps: LoopDeps, userMessage: string): Asyn
         if (planItems.length > 0) yield { type: 'plan', items: planItems };
         const result = yield* runProgram(program, { host, ledger, confirm });
 
-        // 复盘（reflect）：把账本里的真实结果喂回模型，限定只能 finish，让它写基于真相的回答。
+        // 复盘（reflect）：把账本真相 + 最终页面可见文本喂回模型，限定只能 finish，让它基于真相作答。
+        // 账本="我做了什么"（不可篡改）；surface 文本="现在屏上是什么"（读取类任务据此转述所读）。
+        const visible = serializeSurfaceTexts(host.snapshot());
         messages.push({
           role: 'tool',
           toolCallId: call.id,
-          content: `程序执行完毕。真实结果（来自证据账本，不可篡改）：${factualLedgerSummary(ledger.entries)}。`,
+          content:
+            `程序执行完毕。真实结果（来自证据账本，不可篡改）：${factualLedgerSummary(ledger.entries)}。` +
+            (visible ? `\n当前页面可见文本——${visible}` : ''),
         });
         messages.push({
           role: 'user',
