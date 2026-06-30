@@ -2,7 +2,7 @@ import type { RefKind } from '../types';
 import type { LlmAdapter, LlmMessage, LlmToolCall } from '../llm/types';
 import type { HostAdapter } from '../host/types';
 import type { ConfirmFn, Intent, LedgerEntry, Outcome } from '../honesty/types';
-import { READ_LOOP_TOOLS, ACT_TOOLS, PROGRAM_ACT_TOOLS, REF_TOOL_KINDS, WRITE_REF_KINDS } from './tools';
+import { READ_LOOP_TOOLS, ACT_TOOLS, PROGRAM_ACT_TOOLS, FINISH_TOOL, REF_TOOL_KINDS, WRITE_REF_KINDS } from './tools';
 import { resolveRef } from './refResolver';
 import { serializeSnapshot } from './serialize';
 import { validateProgram, type Program } from './program/types';
@@ -158,6 +158,20 @@ async function processCall(
   return { steps: [{ type: 'error', tool: name, error: `unknown tool "${name}"` }], toolResult: 'ERROR: unknown tool' };
 }
 
+/** 从证据账本拼出“真实发生了什么”的事实陈述，喂给复盘回合（不可被模型篡改）。 */
+function factualLedgerSummary(entries: readonly LedgerEntry[]): string {
+  const opens = entries.filter((e) => e.kind === 'observe' && e.tool === 'openObject').length;
+  const verified = entries.filter((e) => e.kind === 'write' && e.verified).length;
+  const unverified = entries.filter((e) => e.kind === 'write' && !e.verified).length;
+  const cancelled = entries.filter((e) => e.kind === 'grant' && !e.approved).length;
+  const lines: string[] = [];
+  if (opens > 0) lines.push(`打开/查看了 ${opens} 个对象`);
+  if (verified > 0) lines.push(`成功执行并验证了 ${verified} 个动作`);
+  if (cancelled > 0) lines.push(`有 ${cancelled} 个高危动作被用户取消、未执行`);
+  if (unverified > 0) lines.push(`有 ${unverified} 个动作执行后未检测到页面变化（未验证）`);
+  return lines.length > 0 ? lines.join('；') : '没有执行任何动作';
+}
+
 function finishStep(answer: string, ledger: Ledger): AgentStep {
   const guarded = guardFinish(answer.trim(), ledger.entries);
   return { type: 'finish', answer: guarded.answer, outcome: guarded.outcome, ledger: ledger.toJSON() };
@@ -285,7 +299,22 @@ export function createAgent(options: AgentOptions) {
           const planItems = summarizeProgram(program, host.snapshot());
           if (planItems.length > 0) yield { type: 'plan', items: planItems };
           const result = yield* runProgram(program, { host, ledger, confirm });
-          yield programFinish(result.answer.trim() || '（程序已执行）', result.aborted);
+
+          // 复盘（reflect）：把账本里的真实结果喂回模型，限定只能 finish，让它写基于真相的回答。
+          messages.push({
+            role: 'tool',
+            toolCallId: call.id,
+            content: `程序执行完毕。真实结果（来自证据账本，不可篡改）：${factualLedgerSummary(ledger.entries)}。`,
+          });
+          messages.push({
+            role: 'user',
+            content:
+              '请基于上面的真实结果，用一两句话给用户准确的最终回答（调用 finish）。绝不要声称被取消或未验证的动作已完成。',
+          });
+          const reflect = await llm.step(messages, [FINISH_TOOL]);
+          const reflectCall = reflect.toolCalls.find((c) => c.name === 'finish');
+          const reflectAnswer = (reflectCall ? String(reflectCall.arguments.answer ?? '') : reflect.content).trim();
+          yield programFinish(reflectAnswer || result.answer.trim() || '（程序已执行）', result.aborted);
           done = true;
           break;
         }

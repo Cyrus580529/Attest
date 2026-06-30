@@ -86,6 +86,22 @@ describe('loop code-as-action (codeAsAction)', () => {
     expect(plan?.type === 'plan' && plan.items).toContain('把「amount」设为 5');
   });
 
+  it('三段式：执行后有一个复盘回合，最终回答来自看到真实结果后的反思，而非程序里写死的话', async () => {
+    const before = build(`<input data-agent-control="amount" value="0" />`);
+    const after = build(`<input data-agent-control="amount" value="7" />`, '/p');
+    const program = { body: [{ op: 'setControl', on: { control: 'amount' }, value: '7' }, { op: 'finish', answer: '程序里写死的话' }] };
+    const llm = new FakeLlmAdapter([
+      toolCallTurn('runProgram', { program }),
+      toolCallTurn('finish', { answer: '看到结果后的准确复盘' }),
+    ]);
+    const host = new FakeHostAdapter(before, { 'control:amount': after });
+    const steps = await collect(createAgent({ llm, host, codeAsAction: true }).run('填7'));
+    const finish = steps.at(-1);
+    expect(finish?.type === 'finish' && finish.answer).toContain('看到结果后的准确复盘');
+    expect(finish?.type === 'finish' && finish.answer).not.toContain('程序里写死的话');
+    expect(llm.calls[1]?.tools.map((t) => t.name)).toEqual(['finish']); // 复盘回合只能 finish
+  });
+
   it('真实失败模式：直接 finish 编造动作成功（空账本）→ 必须加注未执行任何动作，不替模型背书', async () => {
     const llm = new FakeLlmAdapter([toolCallTurn('finish', { answer: '已全部标记为已解决' })]);
     const host = new FakeHostAdapter(build(`<button data-agent-action="resolve" data-agent-risk="high">R</button>`));
