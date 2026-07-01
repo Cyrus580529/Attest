@@ -76,9 +76,10 @@ npx vitest run test/live   # 脚本化 live 场景
 **真模型验收脚本**：`examples/live-check.ts`（玩具看板 S1/S2/S3）、`examples/live-real.ts`（真实工作台 T1-T4）。绕 happy-dom CORS 用原生 fetch；vitest 的 `test/live` 在 happy-dom 下会撞 CORS，真验收走这两个脚本。
 
 **开放线（优先级序）**：
-0. **切片8 收尾**：读循环 lookahead + 世界模型先验已真模型 live 通过(5→4 回合、predict 命中 1→2、诚实)。**未 live 的**：程序模式(codeAsAction)节点 `predict` 的真模型净收益;lookahead 的 token 成本 vs 省下往返需更大样本量化;世界模型跨会话持久化。
+0. **切片8 收尾**：读循环 lookahead + 世界模型先验已真模型 live 通过(5→4 回合、predict 命中 1→2、诚实)。**未 live 的**：程序模式(codeAsAction)节点 `predict` 的真模型净收益;lookahead 的 token 成本 vs 省下往返需更大样本量化。
+0b. **切片9 持久化（已 ship，确定性绿）**：`WorldModel`/`RecipeBook` 加 `toJSON()/fromJSON()`——内核只序列化、不做 I/O（宿主决定存哪）;repl 接入存盘/读盘(`examples/.attest-worldmodel.json`)，跨会话延续先验。让"越用越聪明"跨会话真实存在。
 1. **配方"有用"未量**：只证无害（S3 不串味），没做带/不带配方 A/B 比收敛/token。切片8 已搭确定性 A/B 台（`spec-bench.ts`）可复用。量了再决定转默认、ping-pong 退休。
-2. **发布工程件**：README / exports map / 版本 / 记忆持久化全缺——"当库发布"的硬门槛。
+2. **发布工程件**：README / exports map / 版本仍缺——"当库发布"的硬门槛（记忆持久化已由切片9 的 `toJSON/fromJSON` 打通序列化，宿主自接存储）。
 3. 多模型验收（现仅 deepseek-v4-pro）；更多真实页面（导航/分页/嵌套）。
 4. **叙述-诚实原则化**：结果陈述由账本生成，模型只受约束措辞（把 verify-or-refuse 推广到叙述）。
 5. `CandidateSet`/`ReferenceResolver` 接 live（已撤出导出，接进再导出）；per-object 账本；多程序重规划。
