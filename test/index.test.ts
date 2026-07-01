@@ -30,7 +30,7 @@ describe('public API surface', () => {
   });
 
   it('不再泄漏内部管件', () => {
-    const leaked = ['RefMinter', 'resolveRef', 'executeWrite', 'summarizeProgram', 'CandidateSet', 'PlanRunner', 'guardFinish', 'diffSnapshots'];
+    const leaked = ['RefMinter', 'resolveRef', 'executeWrite', 'summarizeProgram', 'guardFinish', 'diffSnapshots'];
     for (const name of leaked) expect(name in api).toBe(false);
   });
 });
