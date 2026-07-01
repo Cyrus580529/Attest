@@ -71,10 +71,13 @@ npx vitest run test/live   # 脚本化 live 场景
 
 **已 ship 的内核优化**：渐进披露（播种 `maxPerType=20`，大页面只露轮廓，真模型 25 工单不编 ref）；写路径单源化（读循环改调 `executeWrite`，verify-or-refuse 只此一处）；复盘回喂 surface 文本（闭合读取类任务缺口）。
 
+**切片8 投机执行——三谱系统一**（已 ship，确定性测试绿，**待真模型 live 验收**）：把「投机执行/世界模型/记忆缓存」三条前沿谱系接进内核，统一成「预测→验证→留下或重同步」。核心洞察：为诚实造好的免费环境验证器 `diffSnapshots` 既是接受测试、又是预测词汇来源——一个免费可信的验证器就是「可对模型激进投机」的许可证。落点：① `Prediction`+`matchesPrediction`（满足档）+ `runSpeculative` 统一执行器（复用 `processCall`/`executeWrite`，`attemptReplay` 退役归并）；② `WorldModel` 从账本 `write` 证据学 (签名,动作)→diff，签名作陈旧性闸门；③ `RecordedStep.observedDiff` + `fromMemory` 源 + **部分重放**（命中前缀零-LLM、漂移前缀复用+LLM补尾）+ 程序节点可带 `predict`（模型 lookahead）。**红线守法**：投机是纯性能层，Ledger 对它全然无知，删掉正确性不变；held 是投机硬围栏；漂移即回退（记忆只加速不背书更硬）。A/B 量化（`bench.test.ts`/`spec-bench.ts`）：冷跑 2 次 LLM → 热跑 10/10 命中、合计 0 次。设计见 `docs/specs/…slice8…design.md`，计划见 `docs/plans/…slice8….md`。
+
 **真模型验收脚本**：`examples/live-check.ts`（玩具看板 S1/S2/S3）、`examples/live-real.ts`（真实工作台 T1-T4）。绕 happy-dom CORS 用原生 fetch；vitest 的 `test/live` 在 happy-dom 下会撞 CORS，真验收走这两个脚本。
 
 **开放线（优先级序）**：
-1. **配方"有用"未量**：只证无害（S3 不串味），没做带/不带配方 A/B 比收敛/token。量了再决定转默认、ping-pong 退休。
+0. **切片8 真模型 live 验收**：确定性全绿，但模型 lookahead 的 token 净收益（predict 成本 vs 省下往返）需真模型量化；记忆/世界模型路径的净收益已由 `bench.test.ts` 确定性证正。live 前不得声称"已验收"。
+1. **配方"有用"未量**：只证无害（S3 不串味），没做带/不带配方 A/B 比收敛/token。切片8 已搭确定性 A/B 台（`spec-bench.ts`）可复用。量了再决定转默认、ping-pong 退休。
 2. **发布工程件**：README / exports map / 版本 / 记忆持久化全缺——"当库发布"的硬门槛。
 3. 多模型验收（现仅 deepseek-v4-pro）；更多真实页面（导航/分页/嵌套）。
 4. **叙述-诚实原则化**：结果陈述由账本生成，模型只受约束措辞（把 verify-or-refuse 推广到叙述）。
