@@ -23,6 +23,10 @@ export { createDomHostAdapter } from './adapters/domHostAdapter';
 export type { DomHostAdapterOptions } from './adapters/domHostAdapter';
 export { createVoixHostAdapter } from './adapters/voixHostAdapter';
 export type { VoixHostAdapterOptions } from './adapters/voixHostAdapter';
+// 真实浏览器后端（Playwright 等）：把信任核心接到实时页面（benchmark / 真实站）
+export { createBrowserHostAdapter } from './adapters/browserHostAdapter';
+export type { BrowserHostAdapterOptions, ParseWithElements } from './adapters/browserHostAdapter';
+export type { BrowserPage } from './adapters/browserPage';
 export { parseVoixWithElements } from './contract/voix';
 export type { VoixParseResult } from './contract/voix';
 

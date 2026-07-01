@@ -11,6 +11,7 @@ describe('public API surface', () => {
       'parseVoix',
       'createDomHostAdapter',
       'createVoixHostAdapter',
+      'createBrowserHostAdapter',
       'createOpenAiAdapter',
       'createAgent',
       'serializeSnapshot',
