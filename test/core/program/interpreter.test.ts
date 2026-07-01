@@ -55,6 +55,36 @@ describe('ProgramInterpreter', () => {
     expect(ret.aborted).toBe(false);
   });
 
+  it('invoke 节点带 predict：不吻合 → mispredict，但写仍 verified（predict 不污染 outcome）', async () => {
+    const before = makeSnap(`<button data-agent-action="go">Go</button><input data-agent-control="c" value="0"/>`);
+    const after = makeSnap(`<button data-agent-action="go">Go</button><input data-agent-control="c" value="9"/>`);
+    const host = new FakeHostAdapter(before, { 'action:go': after });
+    const ledger = new Ledger();
+    const program: Program = {
+      body: [
+        { op: 'invoke', action: 'go', predict: ['control:c: 0 → 5'] }, // 实际是 0→9，预测落空
+        { op: 'finish', answer: 'ok' },
+      ],
+    };
+    const { steps } = await drain(runProgram(program, { host, ledger, confirm: APPROVE_ONCE }));
+    expect(steps.some((s) => s.type === 'speculate' && !s.hit)).toBe(true);
+    expect(steps.some((s) => s.type === 'mispredict')).toBe(true);
+    expect(ledger.entries.some((e) => e.kind === 'write' && e.verified)).toBe(true); // 写照样验证通过
+    expect(computeOutcome(ledger.entries)).toBe('completed'); // predict 落空不改 outcome
+  });
+
+  it('invoke 节点带 predict 且吻合 → speculate hit', async () => {
+    const before = makeSnap(`<button data-agent-action="go">Go</button><input data-agent-control="c" value="0"/>`);
+    const after = makeSnap(`<button data-agent-action="go">Go</button><input data-agent-control="c" value="5"/>`);
+    const host = new FakeHostAdapter(before, { 'action:go': after });
+    const program: Program = {
+      body: [{ op: 'invoke', action: 'go', predict: ['control:c: 0 → 5'] }, { op: 'finish', answer: 'ok' }],
+    };
+    const { steps } = await drain(runProgram(program, { host, ledger: new Ledger(), confirm: APPROVE_ONCE }));
+    expect(steps.some((s) => s.type === 'speculate' && s.hit)).toBe(true);
+    expect(steps.some((s) => s.type === 'mispredict')).toBe(false);
+  });
+
   it('open 按描述/label 解析对象（不止 ref-id）', async () => {
     const host = new FakeHostAdapter(makeSnap(BOARD));
     const program: Program = {

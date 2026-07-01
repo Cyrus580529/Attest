@@ -20,8 +20,8 @@ export type Node =
   | { op: 'if'; cond: Cond; then: Node[]; else?: Node[] }
   | { op: 'open'; on: string } // "$var"（forEach 绑定）或字面 object ref id
   | { op: 'read'; surface: string } // surface 名
-  | { op: 'setControl'; on: { control: string }; value: string } // control 名
-  | { op: 'invoke'; action: string } // action 名
+  | { op: 'setControl'; on: { control: string }; value: string; predict?: string[] } // control 名(+可选预测)
+  | { op: 'invoke'; action: string; predict?: string[] } // action 名(+可选预测)
   | { op: 'finish'; answer: string };
 
 export interface Program {
@@ -92,9 +92,11 @@ function validateNode(node: unknown, path: string, errors: string[]): void {
     case 'setControl':
       need(isObject(node.on) && typeof (node.on as { control?: unknown }).control === 'string', '缺 on{control}');
       need(typeof node.value === 'string', '缺 value');
+      need(node.predict === undefined || Array.isArray(node.predict), 'predict 必须是数组');
       break;
     case 'invoke':
       need(typeof node.action === 'string' && node.action.length > 0, '缺 action');
+      need(node.predict === undefined || Array.isArray(node.predict), 'predict 必须是数组');
       break;
     case 'finish':
       need(typeof node.answer === 'string', '缺 answer');

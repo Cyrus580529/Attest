@@ -7,6 +7,7 @@ import { resolveRef, resolveObjectByLabel } from '../refResolver';
 import type { RefResolution } from '../refResolver';
 import { serializeSnapshot } from '../serialize';
 import { executeWrite } from '../execWrite';
+import { matchesPrediction } from '../speculation/prediction';
 import type { Cond, Node, Program, Query } from './types';
 
 const DEFAULT_MAX_NODES = 200;
@@ -73,12 +74,33 @@ export async function* runProgram(
   async function* runWrite(
     op: string,
     req: { tool: 'setControl' | 'invokeAction'; refId: string; value?: string },
+    predict?: string[],
   ): AsyncGenerator<AgentStep, Signal> {
     const { steps } = await executeWrite(host, ledger, confirm, grantedScopes, req);
     for (const s of steps) yield s;
     if (steps.some((s) => s.type === 'error')) return 'abort';
     if (steps.some((s) => s.type === 'cancelled')) return 'continue'; // 拒绝不中止整批
-    if (steps.some((s) => s.type === 'action' && !s.verified)) return 'abort'; // 写未验证 → 中止
+    const actionStep = steps.find((s) => s.type === 'action') as
+      | Extract<AgentStep, { type: 'action' }>
+      | undefined;
+    if (actionStep && !actionStep.verified) return 'abort'; // 写未验证 → 中止
+    // 模型 lookahead：predict 只影响观测（speculate/mispredict），不污染 verify/outcome。
+    if (predict && predict.length > 0 && actionStep) {
+      const hit = matchesPrediction(
+        { changed: actionStep.verified, details: actionStep.evidence },
+        { expectDetails: predict },
+      );
+      yield { type: 'speculate', tool: req.tool, refId: actionStep.refId, hit };
+      if (!hit) {
+        yield {
+          type: 'mispredict',
+          tool: req.tool,
+          refId: actionStep.refId,
+          expected: predict,
+          actual: actionStep.evidence,
+        };
+      }
+    }
     return 'continue';
   }
 
@@ -135,12 +157,12 @@ export async function* runProgram(
       case 'setControl': {
         const ctrl = host.snapshot().controls.find((c) => c.name === node.on.control);
         if (!ctrl) return yield* fail('setControl', `control 未找到: ${node.on.control}`);
-        return yield* runWrite('setControl', { tool: 'setControl', refId: ctrl.ref.id, value: node.value });
+        return yield* runWrite('setControl', { tool: 'setControl', refId: ctrl.ref.id, value: node.value }, node.predict);
       }
       case 'invoke': {
         const action = host.snapshot().actions.find((a) => a.name === node.action);
         if (!action) return yield* fail('invoke', `action 未找到: ${node.action}`);
-        return yield* runWrite('invoke', { tool: 'invokeAction', refId: action.ref.id });
+        return yield* runWrite('invoke', { tool: 'invokeAction', refId: action.ref.id }, node.predict);
       }
       case 'finish':
         return { finish: node.answer };

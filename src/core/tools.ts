@@ -69,6 +69,8 @@ export const RUN_PROGRAM_TOOL: ToolSchema = {
     'Node.op ∈ observe/forEach/if/open/read/setControl/invoke/finish。' +
     'forEach{query:{type?,labelContains?},as,do}; if{cond:{surface,contains},then,else?}; ' +
     'open{on:"$var"}; read{surface}; setControl{on:{control},value}; invoke{action}; finish{answer}。' +
+    'invoke/setControl 可选带 predict:string[]（对执行后可观察变化的预期，如 "control:c: 0 → 5"、"url: /a → /b"）——' +
+    '仅用于加速校验，猜错不影响结果、也不算失败。' +
     '只能引用页面真实暴露的对象/动作/控件/区域名；高危动作会暂停等确认。',
   parameters: {
     type: 'object',
