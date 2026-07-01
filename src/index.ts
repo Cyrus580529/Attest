@@ -28,7 +28,7 @@ export type { VoixParseResult } from './contract/voix';
 
 // ── LLM 适配器 ──
 export type { LlmAdapter, LlmMessage, LlmToolCall, LlmTurn, ToolSchema, LlmRole } from './llm/types';
-export { createOpenAiAdapter } from './llm/openaiAdapter';
+export { createOpenAiAdapter, LlmRequestError } from './llm/openaiAdapter';
 export type { OpenAiAdapterOptions } from './llm/openaiAdapter';
 
 // ── 内核：创建并驱动 agent ──
