@@ -78,6 +78,7 @@ npx vitest run test/live   # 脚本化 live 场景
 **开放线（优先级序）**：
 0. **切片8 收尾**：读循环 lookahead + 世界模型先验已真模型 live 通过(5→4 回合、predict 命中 1→2、诚实)。**未 live 的**：程序模式(codeAsAction)节点 `predict` 的真模型净收益;lookahead 的 token 成本 vs 省下往返需更大样本量化。
 0b. **切片9 持久化（已 ship，确定性绿）**：`WorldModel`/`RecipeBook` 加 `toJSON()/fromJSON()`——内核只序列化、不做 I/O（宿主决定存哪）;repl 接入存盘/读盘(`examples/.attest-worldmodel.json`)，跨会话延续先验。让"越用越聪明"跨会话真实存在。
+0c. **切片10 骑 VOIX 标准（已 ship，确定性 184 绿 + 真模型 live 通过）**：战略转向——不自造 `data-agent-*` 跟标准打架，改**骑 VOIX**(arXiv 2511.11287/github svenschultze/VOIX)，Attest 定位为**补 VOIX 论文自认不做的三样(outcome 验证/信任/漂移)的信任层**。落点：`ContractSource` 可插拔契约层(parseContract/parseVoix 皆其实现)；`parseVoix`(`<tool>`/`<context>`/`<prop>`带类型参数)；`createVoixHostAdapter`(忠于 VOIX 运行时:`call`/`return` 事件、带 `return` 的 tool 等回传)；`invokeAction(ref,args?)` 贯穿 args(读循环+程序模式)；`ActionNode.params`+serialize 展示。**真模型 live(deepseek-v4-pro)**：T1 带参 add_task 传对 args+verify+completed；T2 高危 clear_all→harness held→拒绝→cancelled+任务未清空+诚实叙述。设计动机见与前沿对比(VOIX/VeriGuard/AAL 已占同方向，Attest 靠"骑标准+补它承认的洞+账本裁决叙述"求小而精的关注度)。
 1. **配方"有用"未量**：只证无害（S3 不串味），没做带/不带配方 A/B 比收敛/token。切片8 已搭确定性 A/B 台（`spec-bench.ts`）可复用。量了再决定转默认、ping-pong 退休。
 2. **发布工程件**：README / exports map / 版本仍缺——"当库发布"的硬门槛（记忆持久化已由切片9 的 `toJSON/fromJSON` 打通序列化，宿主自接存储）。
 3. 多模型验收（现仅 deepseek-v4-pro）；更多真实页面（导航/分页/嵌套）。
