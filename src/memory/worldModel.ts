@@ -24,4 +24,16 @@ export class WorldModel {
     const details = this.store.get(this.key(pageSignature(snapshot), actionName));
     return details ? { expectDetails: details } : null;
   }
+
+  /** 序列化为可存盘的普通对象（宿主决定存哪：文件/localStorage/DB）。内核不做 I/O。 */
+  toJSON(): Record<string, string[]> {
+    return Object.fromEntries(this.store);
+  }
+
+  /** 从存盘数据重建——跨会话延续先验（"越用越聪明"落地）。 */
+  static fromJSON(data: Record<string, string[]>): WorldModel {
+    const wm = new WorldModel();
+    for (const [k, v] of Object.entries(data ?? {})) wm.store.set(k, v);
+    return wm;
+  }
 }

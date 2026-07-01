@@ -29,4 +29,16 @@ export class RecipeBook {
     const list = this.store.get(signature) ?? [];
     return [...list].reverse().slice(0, limit);
   }
+
+  /** 序列化为可存盘的普通对象（宿主决定存哪）。内核不做 I/O。 */
+  toJSON(): Record<string, Recipe[]> {
+    return Object.fromEntries(this.store);
+  }
+
+  /** 从存盘数据重建——跨会话延续配方先验。 */
+  static fromJSON(data: Record<string, Recipe[]>): RecipeBook {
+    const rb = new RecipeBook();
+    for (const [k, v] of Object.entries(data ?? {})) rb.store.set(k, v);
+    return rb;
+  }
 }
