@@ -21,6 +21,7 @@ export function fromMemory(steps: RecordedStep[]): PredictionSource {
     next(snapshot: PageSnapshot): SpecStep | null {
       if (i >= steps.length) return null;
       const step = steps[i++];
+      if (!step) return null;
       if (step.tool === 'finish') {
         return {
           call: { id: 'spec_finish', name: 'finish', arguments: { answer: step.answer ?? '' } },

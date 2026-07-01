@@ -44,7 +44,7 @@ describe('loop page memory', () => {
     const emptyLlm = new FakeLlmAdapter([]);
     const steps = await collect(createAgent({ llm: emptyLlm, host: host2, memory }).run('看第一个'));
 
-    expect(steps.some((s) => s.type === 'replay')).toBe(true);
+    expect(steps.some((s) => s.type === 'observation')).toBe(true); // 投机重放的读步
     expect(steps.at(-1)).toMatchObject({ type: 'finish', outcome: 'completed' });
     expect(emptyLlm.calls).toHaveLength(0);
   });
@@ -63,6 +63,26 @@ describe('loop page memory', () => {
     const steps = await collect(createAgent({ llm: llm2, host: host2, memory }).run('看第二个'));
 
     expect(llm2.calls.length).toBeGreaterThan(0);
+    expect(steps.at(-1)).toMatchObject({ type: 'finish', outcome: 'completed' });
+  });
+
+  it('部分重放：写步预测命中 → speculate hit，零-LLM 完成', async () => {
+    const memory = new PageMemory();
+    const p0 = () => build(`<input data-agent-control="c" value="0"/>`, '/p');
+    const p5 = () => build(`<input data-agent-control="c" value="5"/>`, '/p');
+    const host1 = new FakeHostAdapter(p0(), { 'control:c': p5() });
+    const llm1 = new FakeLlmAdapter([
+      toolCallTurn('setControl', { ref: 'control:c', value: '5' }),
+      toolCallTurn('finish', { answer: '设好了' }),
+    ]);
+    await collect(createAgent({ llm: llm1, host: host1, memory }).run('设置c'));
+
+    const host2 = new FakeHostAdapter(p0(), { 'control:c': p5() });
+    const emptyLlm = new FakeLlmAdapter([]);
+    const steps = await collect(createAgent({ llm: emptyLlm, host: host2, memory }).run('设置c'));
+
+    expect(steps.some((s) => s.type === 'speculate' && s.hit)).toBe(true);
+    expect(emptyLlm.calls).toHaveLength(0);
     expect(steps.at(-1)).toMatchObject({ type: 'finish', outcome: 'completed' });
   });
 

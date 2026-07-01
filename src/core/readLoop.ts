@@ -9,9 +9,10 @@ import { executeWrite } from './execWrite';
 import { Ledger } from '../honesty/ledger';
 import { guardFinish } from '../honesty/narrationGuard';
 import { memoryKey } from '../memory/pageSignature';
-import { recordRef, resolveRecordedRef, type RecordedStep } from '../memory/pageMemory';
+import { recordRef, type RecordedStep } from '../memory/pageMemory';
 import { finishStep } from './finish';
-import { matchesPrediction } from './speculation/prediction';
+import { runSpeculative } from './speculation/runSpeculative';
+import { fromMemory } from './speculation/sources';
 import type { AgentStep, LoopDeps } from './loopTypes';
 
 interface CallResult {
@@ -81,68 +82,7 @@ export async function processCall(
   return { steps: [{ type: 'error', tool: name, error: `unknown tool "${name}"` }], toolResult: 'ERROR: unknown tool' };
 }
 
-/** 记忆命中：按录制步零-LLM 重放；任一 ref 解析不出/写未验证 → 回退走 LLM；高危仍 held。 */
-async function* attemptReplay(
-  steps: RecordedStep[],
-  host: HostAdapter,
-  ledger: Ledger,
-  confirm: ConfirmFn,
-): AsyncGenerator<AgentStep, { done: boolean }> {
-  for (const step of steps) {
-    if (step.tool === 'finish') {
-      yield finishStep(step.answer ?? '', ledger);
-      return { done: true };
-    }
-
-    let refId: string | undefined;
-    if (step.ref) {
-      const ref = resolveRecordedRef(host.snapshot(), step.ref);
-      if (!ref) return { done: false };
-      refId = ref.id;
-    }
-
-    yield { type: 'replay', tool: step.tool, refId };
-
-    const call: LlmToolCall = {
-      id: `replay_${step.tool}`,
-      name: step.tool,
-      arguments: {
-        ...(refId !== undefined ? { ref: refId } : {}),
-        ...(step.value !== undefined ? { value: step.value } : {}),
-      },
-    };
-    const { steps: produced } = await processCall(call, host, ledger, confirm, new Set<string>());
-    for (const s of produced) yield s;
-
-    if (produced.some((s) => s.type === 'error')) return { done: false };
-    if (produced.some((s) => s.type === 'action' && !s.verified)) return { done: false };
-    if (produced.some((s) => s.type === 'cancelled')) {
-      yield finishStep('', ledger);
-      return { done: true };
-    }
-    // 漂移检测：录制过 observedDiff 时，实测证据必须满足它，否则页面行为已偏离 → 放弃重放。
-    // 这让「记忆只加速不背书」更硬：同一动作现在产生不同 diff（哪怕仍 verified）也不盲从。
-    if (step.observedDiff && step.observedDiff.length > 0) {
-      const actionStep = produced.find((s) => s.type === 'action') as
-        | Extract<AgentStep, { type: 'action' }>
-        | undefined;
-      if (
-        actionStep &&
-        !matchesPrediction(
-          { changed: actionStep.verified, details: actionStep.evidence },
-          { expectDetails: step.observedDiff },
-        )
-      ) {
-        return { done: false };
-      }
-    }
-  }
-
-  yield finishStep('', ledger);
-  return { done: true };
-}
-
-/** 读循环（单步 tool-calling）：记忆命中先零-LLM 重放，否则逐步问模型；completed 才录制记忆。 */
+/** 读循环（单步 tool-calling）：记忆命中先投机重放（前缀复用），否则逐步问模型；completed 才录制记忆。 */
 export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGenerator<AgentStep> {
   const { llm, host, tools, systemPrompt, confirm, memory, maxSteps } = deps;
   const ledger = new Ledger();
@@ -153,8 +93,10 @@ export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGe
   if (memory) {
     const entry = memory.lookup(key);
     if (entry) {
-      const result = yield* attemptReplay(entry.steps, host, ledger, confirm);
-      if (result.done) return;
+      const res = yield* runSpeculative(fromMemory(entry.steps), { host, ledger, confirm, grantedScopes });
+      if (res.done) return;
+      // 部分重放：已验证前缀留在 ledger，漂移/失效处交下方 LLM 循环补尾（余下重新规划）。
+      // 不续跑录制尾巴——页面已偏离，陈旧预测不可信（红线：记忆只加速不背书）。
     }
   }
 
