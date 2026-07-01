@@ -1,9 +1,17 @@
 import type { RefKind } from '../types';
 import type { ToolSchema } from '../llm/types';
 
+const PREDICT_PARAM = {
+  type: 'array',
+  items: { type: 'string' },
+  description:
+    '可选：对执行后可观察变化的预期（如 "control:c: 0 → 5"、"url: /a → /b"、"surface s changed"）。' +
+    '命中则连续执行你本回合后续步骤，落空会停下让你按真实结果重规划——仅加速，猜错不算失败、不改结果。',
+};
+
 const refParam = (desc: string) => ({
   type: 'object',
-  properties: { ref: { type: 'string', description: desc } },
+  properties: { ref: { type: 'string', description: desc }, predict: PREDICT_PARAM },
   required: ['ref'],
   additionalProperties: false,
 });
@@ -46,6 +54,7 @@ export const WRITE_TOOLS: ToolSchema[] = [
       properties: {
         ref: { type: 'string', description: 'control 的 ref id' },
         value: { type: 'string', description: '要设置的值' },
+        predict: PREDICT_PARAM,
       },
       required: ['ref', 'value'],
       additionalProperties: false,

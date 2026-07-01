@@ -14,6 +14,7 @@ import type { WorldModel } from '../memory/worldModel';
 import { finishStep } from './finish';
 import { runSpeculative } from './speculation/runSpeculative';
 import { fromMemory } from './speculation/sources';
+import { matchesPrediction } from './speculation/prediction';
 import type { AgentStep, LoopDeps } from './loopTypes';
 
 interface CallResult {
@@ -151,6 +152,36 @@ export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGe
       for (const s of result.steps) yield s;
       if (result.recorded) recorded.push(result.recorded);
       messages.push({ role: 'tool', toolCallId: call.id, content: result.toolResult });
+
+      // lookahead：模型可在一回合内提多步并给 predict。写步命中预测则继续执行本回合后续步；
+      // 落空/未验证/error/取消 → 中断本轮批次，回到 llm.step 让模型按真实结果重规划（模型始终主导）。
+      const actionStep = result.steps.find((s) => s.type === 'action') as
+        | Extract<AgentStep, { type: 'action' }>
+        | undefined;
+      if (result.steps.some((s) => s.type === 'error' || s.type === 'cancelled')) break;
+      if (actionStep && !actionStep.verified) break;
+      if (actionStep) {
+        const predict = Array.isArray(call.arguments.predict)
+          ? (call.arguments.predict as unknown[]).map(String)
+          : undefined;
+        if (predict && predict.length > 0) {
+          const hit = matchesPrediction(
+            { changed: actionStep.verified, details: actionStep.evidence },
+            { expectDetails: predict },
+          );
+          yield { type: 'speculate', tool: call.name, refId: actionStep.refId, hit };
+          if (!hit) {
+            yield {
+              type: 'mispredict',
+              tool: call.name,
+              refId: actionStep.refId,
+              expected: predict,
+              actual: actionStep.evidence,
+            };
+            break;
+          }
+        }
+      }
     }
     if (finished) return;
   }
