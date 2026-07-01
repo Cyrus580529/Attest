@@ -2,6 +2,7 @@ import type { PageSnapshot } from '../../types';
 import type { LlmToolCall } from '../../llm/types';
 import type { RecordedStep } from '../../memory/pageMemory';
 import { resolveRecordedRef } from '../../memory/pageMemory';
+import type { WorldModel } from '../../memory/worldModel';
 import type { Prediction } from './prediction';
 
 /** 一步投机：要执行的工具调用 + 可选预测；call=null 表示源在当前页失效（ref 解析不出）。 */
@@ -14,8 +15,11 @@ export interface PredictionSource {
   next(snapshot: PageSnapshot): SpecStep | null;
 }
 
-/** 记忆轨迹 → 预测源：按录制顺序重解析 ref，observedDiff 作预测。 */
-export function fromMemory(steps: RecordedStep[]): PredictionSource {
+/**
+ * 记忆轨迹 → 预测源：按录制顺序重解析 ref，observedDiff 作预测。
+ * observedDiff 缺失（老记忆/读步）且传了 worldModel 时，用世界模型为 action 步补预测。
+ */
+export function fromMemory(steps: RecordedStep[], worldModel?: WorldModel): PredictionSource {
   let i = 0;
   return {
     next(snapshot: PageSnapshot): SpecStep | null {
@@ -39,8 +43,11 @@ export function fromMemory(steps: RecordedStep[]): PredictionSource {
         name: step.tool,
         arguments: { ...refArg, ...(step.value !== undefined ? { value: step.value } : {}) },
       };
-      const predict: Prediction | undefined =
+      let predict: Prediction | undefined =
         step.observedDiff && step.observedDiff.length > 0 ? { expectDetails: step.observedDiff } : undefined;
+      if (!predict && worldModel && step.ref?.by === 'name' && step.ref.kind === 'action') {
+        predict = worldModel.predict(snapshot, step.ref.name) ?? undefined;
+      }
       return { call, predict };
     },
   };

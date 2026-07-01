@@ -3,6 +3,7 @@ import type { HostAdapter } from '../host/types';
 import type { ConfirmFn, Intent, LedgerEntry, Outcome } from '../honesty/types';
 import type { PageMemory } from '../memory/pageMemory';
 import type { RecipeBook } from '../memory/recipeBook';
+import type { WorldModel } from '../memory/worldModel';
 
 /** agent 运行时逐个 yield 的步骤——读循环与程序循环共用的可观察词汇。 */
 export type AgentStep =
@@ -27,5 +28,7 @@ export interface LoopDeps {
   confirm: ConfirmFn;
   memory?: PageMemory;
   recipes?: RecipeBook;
+  /** opt-in：从账本学 动作→diff 因果，为记忆步补预测（谱系②世界模型）。 */
+  worldModel?: WorldModel;
   maxSteps: number;
 }

@@ -4,6 +4,7 @@ import type { ConfirmFn } from '../honesty/types';
 import { READ_LOOP_TOOLS, ACT_TOOLS, PROGRAM_ACT_TOOLS } from './tools';
 import { PageMemory } from '../memory/pageMemory';
 import { RecipeBook } from '../memory/recipeBook';
+import type { WorldModel } from '../memory/worldModel';
 import { defaultSystemPrompt, programSystemPrompt } from './prompts';
 import { runReadLoop } from './readLoop';
 import { runProgramLoop } from './programLoop';
@@ -23,6 +24,8 @@ export interface AgentOptions {
   codeAsAction?: boolean;
   /** opt-in：codeAsAction 路径的配方先验——成功程序录入、同签名页面召回注入（不做 verbatim 重放）。 */
   recipes?: RecipeBook;
+  /** opt-in：世界模型（谱系②）——验证写即学 动作→diff，为记忆重放补预测。 */
+  worldModel?: WorldModel;
 }
 
 const DEFAULT_MAX_STEPS = 12;
@@ -39,6 +42,7 @@ export function createAgent(options: AgentOptions) {
     confirm: options.confirm ?? DENY,
     memory: options.memory,
     recipes: options.recipes,
+    worldModel: options.worldModel,
     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
   };
 

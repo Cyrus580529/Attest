@@ -66,6 +66,20 @@ describe('loop page memory', () => {
     expect(steps.at(-1)).toMatchObject({ type: 'finish', outcome: 'completed' });
   });
 
+  it('世界模型：验证写后学到 动作→diff，可为无 observedDiff 的记忆步补预测', async () => {
+    const { WorldModel } = await import('../../src/memory/worldModel');
+    const wm = new WorldModel();
+    const p0 = () => build(`<input data-agent-control="c" value="0"/>`, '/p');
+    const p5 = () => build(`<input data-agent-control="c" value="5"/>`, '/p');
+    const host = new FakeHostAdapter(p0(), { 'control:c': p5() });
+    const llm = new FakeLlmAdapter([
+      toolCallTurn('setControl', { ref: 'control:c', value: '5' }),
+      toolCallTurn('finish', { answer: 'ok' }),
+    ]);
+    await collect(createAgent({ llm, host, worldModel: wm }).run('设置c'));
+    expect(wm.predict(p0(), 'c')).not.toBeNull(); // 已学到 (签名, 'c') → diff
+  });
+
   it('部分重放：写步预测命中 → speculate hit，零-LLM 完成', async () => {
     const memory = new PageMemory();
     const p0 = () => build(`<input data-agent-control="c" value="0"/>`, '/p');

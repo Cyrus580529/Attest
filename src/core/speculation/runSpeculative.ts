@@ -6,12 +6,15 @@ import { processCall } from '../readLoop';
 import { finishStep } from '../finish';
 import { matchesPrediction } from './prediction';
 import type { PredictionSource } from './sources';
+import type { WorldModel } from '../../memory/worldModel';
 
 export interface SpecDeps {
   host: HostAdapter;
   ledger: Ledger;
   confirm: ConfirmFn;
   grantedScopes: Set<string>;
+  /** 传入则重放中的验证写也会喂给世界模型学习。 */
+  worldModel?: WorldModel;
 }
 
 export interface SpecResult {
@@ -28,7 +31,7 @@ export async function* runSpeculative(
   source: PredictionSource,
   deps: SpecDeps,
 ): AsyncGenerator<AgentStep, SpecResult> {
-  const { host, ledger, confirm, grantedScopes } = deps;
+  const { host, ledger, confirm, grantedScopes, worldModel } = deps;
 
   for (;;) {
     const step = source.next(host.snapshot());
@@ -44,7 +47,7 @@ export async function* runSpeculative(
       return { done: true };
     }
 
-    const { steps: produced } = await processCall(step.call, host, ledger, confirm, grantedScopes);
+    const { steps: produced } = await processCall(step.call, host, ledger, confirm, grantedScopes, worldModel);
     for (const s of produced) yield s;
 
     if (produced.some((s) => s.type === 'error')) return { done: false };
