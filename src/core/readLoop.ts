@@ -9,7 +9,8 @@ import { executeWrite } from './execWrite';
 import { Ledger } from '../honesty/ledger';
 import { guardFinish } from '../honesty/narrationGuard';
 import type { WorldModel } from '../memory/worldModel';
-import { finishStep } from './finish';
+import { finishStep, factualLedgerSummary } from './finish';
+import { compactMessages } from './compaction';
 import { matchesPrediction } from './speculation/prediction';
 import type { AgentStep, LoopDeps } from './loopTypes';
 
@@ -106,16 +107,22 @@ function worldModelPrior(deps: LoopDeps): string {
  * 世界模型（若有）把「已知动作→diff」作先验注入，帮模型更自信地规划——但绝不旁路模型。
  */
 export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGenerator<AgentStep> {
-  const { llm, host, tools, systemPrompt, confirm, worldModel, maxSteps } = deps;
+  const { llm, host, tools, systemPrompt, confirm, worldModel, maxSteps, maxContextTokens } = deps;
   const ledger = new Ledger();
   const grantedScopes = new Set<string>(); // 本 run 内共享的作用域授权（scope: 'all'）
 
-  const messages: LlmMessage[] = [
+  let messages: LlmMessage[] = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userMessage + worldModelPrior(deps) },
   ];
 
   for (let i = 0; i < maxSteps; i++) {
+    // 上下文管理：历史超预算时压缩（保 system+user+近期，中间以账本事实摘要替代），防长任务撑爆窗口。
+    messages = compactMessages(
+      messages,
+      `（为控制上下文，较早的中间步骤已省略。至此事实进展：${factualLedgerSummary(ledger.entries)}。当前页面以最近的工具结果为准。）`,
+      { maxContextTokens },
+    );
     const turn = await llm.step(messages, tools);
 
     if (turn.toolCalls.length === 0) {

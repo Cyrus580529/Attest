@@ -24,9 +24,12 @@ export interface AgentOptions {
   recipes?: RecipeBook;
   /** opt-in：世界模型（谱系②）——验证写即学 动作→diff，作为下次同页任务的先验注入（LLM 仍主导）。 */
   worldModel?: WorldModel;
+  /** 上下文 token 预算（估算，char/4）；读循环历史超此值即压缩。默认 24000。 */
+  maxContextTokens?: number;
 }
 
 const DEFAULT_MAX_STEPS = 12;
+const DEFAULT_MAX_CONTEXT_TOKENS = 24_000;
 const DENY: ConfirmFn = () => Promise.resolve({ approved: false });
 
 /** 组装运行上下文，按模式分派到读循环或 Code-as-Action 程序循环。 */
@@ -41,6 +44,7 @@ export function createAgent(options: AgentOptions) {
     recipes: options.recipes,
     worldModel: options.worldModel,
     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
+    maxContextTokens: options.maxContextTokens ?? DEFAULT_MAX_CONTEXT_TOKENS,
   };
 
   function run(userMessage: string): AsyncGenerator<AgentStep> {

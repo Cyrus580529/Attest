@@ -29,4 +29,6 @@ export interface LoopDeps {
   /** opt-in：从账本学 动作→diff 因果，作为下次同页任务的先验注入（谱系②世界模型；LLM 仍主导）。 */
   worldModel?: WorldModel;
   maxSteps: number;
+  /** 上下文 token 预算：读循环历史超此值即压缩（保 system+user+近期，中间以账本摘要替代）。 */
+  maxContextTokens: number;
 }
