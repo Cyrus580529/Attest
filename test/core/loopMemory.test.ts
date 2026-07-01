@@ -66,6 +66,28 @@ describe('loop page memory', () => {
     expect(steps.at(-1)).toMatchObject({ type: 'finish', outcome: 'completed' });
   });
 
+  it('行为漂移（同写现在产生不同 diff，仍 verified）→ 放弃重放，回退 LLM', async () => {
+    const memory = new PageMemory();
+    const p0 = () => build(`<input data-agent-control="c" value="0"/>`, '/p');
+    const p5 = () => build(`<input data-agent-control="c" value="5"/>`, '/p');
+    const p7 = () => build(`<input data-agent-control="c" value="7"/>`, '/p');
+    // 首跑：setControl c → 0→5，录制 observedDiff 含「control:c: 0 → 5」
+    const host1 = new FakeHostAdapter(p0(), { 'control:c': p5() });
+    const llm1 = new FakeLlmAdapter([
+      toolCallTurn('setControl', { ref: 'control:c', value: '5' }),
+      toolCallTurn('finish', { answer: '设好了' }),
+    ]);
+    await collect(createAgent({ llm: llm1, host: host1, memory }).run('设置c'));
+
+    // 二跑：同 key，但同一写现在 0→7（漂移，仍 verified）→ 不盲从，回退 LLM
+    const host2 = new FakeHostAdapter(p0(), { 'control:c': p7() });
+    const llm2 = new FakeLlmAdapter([toolCallTurn('finish', { answer: '回退作答' })]);
+    const steps = await collect(createAgent({ llm: llm2, host: host2, memory }).run('设置c'));
+
+    expect(llm2.calls.length).toBeGreaterThan(0); // 确实回退问了模型
+    expect(steps.at(-1)).toMatchObject({ type: 'finish' });
+  });
+
   it('高危动作重放仍 held（默认拒绝 → 不执行）', async () => {
     const memory = new PageMemory();
     const shop = () => build(`<button data-agent-action="redeem" data-agent-risk="high">兑换</button>`, '/shop');

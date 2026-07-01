@@ -11,6 +11,7 @@ import { guardFinish } from '../honesty/narrationGuard';
 import { memoryKey } from '../memory/pageSignature';
 import { recordRef, resolveRecordedRef, type RecordedStep } from '../memory/pageMemory';
 import { finishStep } from './finish';
+import { matchesPrediction } from './speculation/prediction';
 import type { AgentStep, LoopDeps } from './loopTypes';
 
 interface CallResult {
@@ -20,11 +21,12 @@ interface CallResult {
 }
 
 /** 单个工具调用的派发：observe/read 走读路径，write 走"高危held→verify"写路径；每步记账。 */
-async function processCall(
+export async function processCall(
   call: LlmToolCall,
   host: HostAdapter,
   ledger: Ledger,
   confirm: ConfirmFn,
+  grantedScopes: Set<string>,
 ): Promise<CallResult> {
   const name = call.name;
   const before = host.snapshot();
@@ -62,9 +64,9 @@ async function processCall(
   if (writeKind) {
     const refId = String(call.arguments.ref ?? '');
     const value = name === 'setControl' ? String(call.arguments.value ?? '') : undefined;
-    // 复用唯一的写原语（verify-or-refuse + 高危 held 只此一处）。读循环无跨调用作用域，
-    // 故传一次性空 scope 集——每次高危仍逐个确认，与历史行为一致。
-    const wr = await executeWrite(host, ledger, confirm, new Set<string>(), {
+    // 复用唯一的写原语（verify-or-refuse + 高危 held 只此一处）。grantedScopes 由调用方
+    // 传入：读循环主路共享一个（作用域授权 all 生效）；重放传一次性空集（高危仍逐个确认）。
+    const wr = await executeWrite(host, ledger, confirm, grantedScopes, {
       tool: name as 'setControl' | 'invokeAction',
       refId,
       value,
@@ -109,7 +111,7 @@ async function* attemptReplay(
         ...(step.value !== undefined ? { value: step.value } : {}),
       },
     };
-    const { steps: produced } = await processCall(call, host, ledger, confirm);
+    const { steps: produced } = await processCall(call, host, ledger, confirm, new Set<string>());
     for (const s of produced) yield s;
 
     if (produced.some((s) => s.type === 'error')) return { done: false };
@@ -117,6 +119,22 @@ async function* attemptReplay(
     if (produced.some((s) => s.type === 'cancelled')) {
       yield finishStep('', ledger);
       return { done: true };
+    }
+    // 漂移检测：录制过 observedDiff 时，实测证据必须满足它，否则页面行为已偏离 → 放弃重放。
+    // 这让「记忆只加速不背书」更硬：同一动作现在产生不同 diff（哪怕仍 verified）也不盲从。
+    if (step.observedDiff && step.observedDiff.length > 0) {
+      const actionStep = produced.find((s) => s.type === 'action') as
+        | Extract<AgentStep, { type: 'action' }>
+        | undefined;
+      if (
+        actionStep &&
+        !matchesPrediction(
+          { changed: actionStep.verified, details: actionStep.evidence },
+          { expectDetails: step.observedDiff },
+        )
+      ) {
+        return { done: false };
+      }
     }
   }
 
@@ -129,6 +147,7 @@ export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGe
   const { llm, host, tools, systemPrompt, confirm, memory, maxSteps } = deps;
   const ledger = new Ledger();
   const recorded: RecordedStep[] = [];
+  const grantedScopes = new Set<string>(); // 本 run 内共享的作用域授权（scope: 'all'）
   const key = memory ? memoryKey(host.snapshot(), userMessage) : '';
 
   if (memory) {
@@ -170,7 +189,7 @@ export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGe
         finished = true;
         break;
       }
-      const result = await processCall(call, host, ledger, confirm);
+      const result = await processCall(call, host, ledger, confirm, grantedScopes);
       for (const s of result.steps) yield s;
       if (result.recorded) recorded.push(result.recorded);
       messages.push({ role: 'tool', toolCallId: call.id, content: result.toolResult });
