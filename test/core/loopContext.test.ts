@@ -22,7 +22,11 @@ describe('读循环上下文管理', () => {
     await collect(createAgent({ llm, host, maxContextTokens: 40, maxSteps: 20 }).run('反复读那段文字'));
 
     const last = llm.calls.at(-1)!;
-    expect(last.messages.some((m) => m.role === 'user' && m.content.includes('事实进展'))).toBe(true);
+    const summaryMsg = last.messages.find((m) => m.role === 'user' && m.content.includes('事实进展'));
+    expect(summaryMsg).toBeTruthy();
+    // 关键：摘要不只是计数，还带「关键观察原文摘录」——读到的内容进了摘要，防丢细节。
+    expect(summaryMsg!.content).toContain('关键观察');
+    expect(summaryMsg!.content).toContain('内容'); // surface 原文的片段被保住
     // 10 轮朴素累积会 ≥22 条；压缩后恒定在 head(2)+摘要(1)+近期(≤6) 量级，远低于此。
     expect(last.messages.length).toBeLessThan(14);
   });

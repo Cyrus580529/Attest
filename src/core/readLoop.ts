@@ -9,7 +9,7 @@ import { executeWrite } from './execWrite';
 import { Ledger } from '../honesty/ledger';
 import { guardFinish } from '../honesty/narrationGuard';
 import type { WorldModel } from '../memory/worldModel';
-import { finishStep, factualLedgerSummary } from './finish';
+import { finishStep, factualLedgerSummary, observationDigest } from './finish';
 import { compactMessages } from './compaction';
 import { matchesPrediction } from './speculation/prediction';
 import type { AgentStep, LoopDeps } from './loopTypes';
@@ -117,10 +117,13 @@ export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGe
   ];
 
   for (let i = 0; i < maxSteps; i++) {
-    // 上下文管理：历史超预算时压缩（保 system+user+近期，中间以账本事实摘要替代），防长任务撑爆窗口。
+    // 上下文管理：历史超预算时压缩（保 system+user+近期，中间以账本摘要替代），防长任务撑爆窗口。
+    // 摘要含「事实进展」(做了什么) + 「关键观察原文摘录」(看到了什么)——后者防丢失关键观察细节。
+    const digest = observationDigest(ledger.entries);
     messages = compactMessages(
       messages,
-      `（为控制上下文，较早的中间步骤已省略。至此事实进展：${factualLedgerSummary(ledger.entries)}。当前页面以最近的工具结果为准。）`,
+      `（为控制上下文，较早的中间步骤已省略。至此事实进展：${factualLedgerSummary(ledger.entries)}。` +
+        `${digest ? `\n${digest}\n` : ''}当前页面以最近的工具结果为准。）`,
       { maxContextTokens },
     );
     const turn = await llm.step(messages, tools);

@@ -24,6 +24,32 @@ export function factualLedgerSummary(entries: readonly LedgerEntry[]): string {
   return lines.length > 0 ? lines.join('；') : '没有执行任何动作';
 }
 
+export interface DigestOptions {
+  maxItems?: number;
+  maxCharsPerItem?: number;
+}
+
+/**
+ * 关键观察原文摘录：从账本抽最近的读观察（readSurface/openObject 的 detail 原文），
+ * 按内容去重、每条截断、总数封顶。用于上下文压缩——只留计数会让模型忘掉看过的关键内容，
+ * 这里把「看到了什么」的原文（有界地）保住，比纯计数摘要忠实得多。
+ */
+export function observationDigest(entries: readonly LedgerEntry[], opts: DigestOptions = {}): string {
+  const maxItems = opts.maxItems ?? 6;
+  const maxChars = opts.maxCharsPerItem ?? 300;
+  const seen = new Set<string>();
+  const items: string[] = [];
+  for (let i = entries.length - 1; i >= 0 && items.length < maxItems; i--) {
+    const e = entries[i];
+    if (!e || e.kind !== 'observe' || (e.tool !== 'readSurface' && e.tool !== 'openObject')) continue;
+    const text = e.detail.replace(/\s+/g, ' ').trim();
+    if (!text || seen.has(text)) continue; // 同内容(如重复读同一 surface)只留一次
+    seen.add(text);
+    items.unshift(`- ${e.tool}: ${text.length > maxChars ? text.slice(0, maxChars) + '…' : text}`);
+  }
+  return items.length > 0 ? `关键观察（原文摘录）：\n${items.join('\n')}` : '';
+}
+
 /** 把召回的配方拼成给模型的先验块：目标标签 + 可再发的紧凑 JSON 程序（吻合与否由模型判断）。 */
 export function formatRecipes(recipes: Recipe[]): string {
   const blocks = recipes.map(
