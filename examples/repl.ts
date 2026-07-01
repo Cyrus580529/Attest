@@ -8,7 +8,7 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator';
 const nodeFetch = globalThis.fetch;
 GlobalRegistrator.register();
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
@@ -46,7 +46,22 @@ function loadBoard(): void {
   });
 }
 
-let worldModel: InstanceType<typeof WorldModel> | undefined = new WorldModel();
+// 持久化：世界模型先验存盘到项目本地文件，跨会话延续（"越用越聪明"）。内核不做 I/O，宿主(本 repl)决定存哪。
+const MEM_FILE = resolve(process.cwd(), 'examples/.attest-worldmodel.json');
+function loadWorldModel(): InstanceType<typeof WorldModel> {
+  if (existsSync(MEM_FILE)) {
+    try {
+      return WorldModel.fromJSON(JSON.parse(readFileSync(MEM_FILE, 'utf8')));
+    } catch {
+      /* 坏档忽略，从空开始 */
+    }
+  }
+  return new WorldModel();
+}
+function saveWorldModel(): void {
+  if (worldModel) writeFileSync(MEM_FILE, JSON.stringify(worldModel.toJSON()), 'utf8');
+}
+let worldModel: InstanceType<typeof WorldModel> | undefined = loadWorldModel();
 const recipes = new RecipeBook(); // Code-as-Action 配方先验：会话内成功程序累积、同签名召回注入
 let programMode = false; // Code-as-Action 开关（/code 切换）
 const host = createDomHostAdapter({ getUrl: () => '/board' });
@@ -78,8 +93,11 @@ function show(s: Record<string, unknown>): void {
     const ok = s.verified ? '\x1b[32m✓\x1b[0m 已完成' : '\x1b[31m✗\x1b[0m 已执行但';
     const tail = s.verified ? '（页面已确认变化）' : '未检测到可观察变化（未验证）';
     console.log(`  ${ok}${tail}`);
-  } else if (t === 'replay') {
-    console.log(`  \x1b[33m⚡replay\x1b[0m ${String(s.tool)}${s.refId ? `(${String(s.refId)})` : ''}  ← 记忆，零 LLM`);
+  } else if (t === 'speculate') {
+    const hit = s.hit ? '\x1b[32m命中\x1b[0m' : '\x1b[31m落空\x1b[0m';
+    console.log(`  \x1b[33m⚡lookahead\x1b[0m ${String(s.tool)} 预测${hit}`);
+  } else if (t === 'mispredict') {
+    console.log(`  \x1b[33m↻ 预测落空，回模型重规划\x1b[0m`);
   } else if (t === 'observation') {
     const what = s.tool === 'openObject' ? '已打开' : s.tool === 'readSurface' ? '已查看' : '已观察';
     console.log(`  \x1b[2m▸ ${what}\x1b[0m`);
@@ -147,12 +165,13 @@ for (;;) {
     for await (const step of makeAgent().run(line)) {
       // Claude Code 式停顿：执行步之间留一点节奏，逐条推进而非一瞬间糊上去
       const t = (step as { type: string }).type;
-      if (t === 'observation' || t === 'action' || t === 'replay') await sleep(380);
+      if (t === 'observation' || t === 'action' || t === 'speculate') await sleep(380);
       else if (t === 'plan' || t === 'thinking') await sleep(200);
       show(step as unknown as Record<string, unknown>);
     }
   } catch (e) {
     console.log(`  [运行出错] ${(e as Error).message}`);
   }
+  saveWorldModel(); // 每轮存盘：本会话学到的 动作→diff 先验，下次开机仍在
 }
 rl.close();
