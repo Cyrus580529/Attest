@@ -12,6 +12,11 @@ export type {
 export { parseContract, parseContractWithElements } from './contract/parseContract';
 export type { ContractParseResult } from './contract/parseContract';
 
+// ── 可插拔契约来源：内核信任核心跑在 PageSnapshot 上，契约格式可换 ──
+export type { ContractSource } from './contract/contractSource';
+// 骑 VOIX 标准（arXiv 2511.11287）：Attest 补它明确不做的 outcome 验证/信任/漂移
+export { parseVoix } from './contract/voix';
+
 // ── host 适配器 ──
 export type { HostAdapter, HostResult } from './host/types';
 export { createDomHostAdapter } from './adapters/domHostAdapter';

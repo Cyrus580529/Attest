@@ -8,6 +8,7 @@ describe('public API surface', () => {
     for (const name of [
       'parseContract',
       'parseContractWithElements',
+      'parseVoix',
       'createDomHostAdapter',
       'createOpenAiAdapter',
       'createAgent',
