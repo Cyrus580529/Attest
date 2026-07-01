@@ -58,6 +58,18 @@
 冷跑建记忆用 2 次 LLM，热跑 10 次命中投机 10/10、LLM 调用合计 0——记忆/世界模型路径净收益为正。
 模型 lookahead 路径的 token 净收益需真模型 live 量化（接第一开放线的 A/B）。
 
+## 六·补 修订（2026-07-01，同日）：转向「LLM 全程主导」
+
+初版把**记忆零-LLM 逐字重放**当谱系③的落点。真模型 live 后用户判定"显蠢——投机重放直接放宏、LLM 被架空"。据此定调:**一定要有智能感,LLM 必须主导整个系统。** 遂转向:
+
+- **删除**零-LLM 逐字重放整条子系统(含 slice4b 的 `PageMemory` 老功能)、`runSpeculative`/`fromMemory`/`observedDiff`/`memoryKey`。效率不再来自"跳过 LLM"。
+- **读循环上 lookahead 当主路**:模型每回合亲自规划,可一次提多步并给 `predict`;命中则连续执行本回合后续步,落空/未验证/取消→中断本轮、把真实结果喂回让模型重规划。**至少 1 次 LLM/任务,模型全程 authored。**
+- **世界模型转做先验**:`worldModel.learn` 仍从账本证据学 (签名,动作)→diff,但只**注入上下文**帮模型规划/写 predict,绝不旁路。
+- 效率来源从"跳过模型"变为"让模型一次想更远"。真模型 live:第一次 5 回合、第二次(带先验)4 回合,predict 命中 1→2,两次 completed 且诚实。
+- 保留并转正:`Prediction`/`matchesPrediction`、`WorldModel`(先验)、程序节点 `predict`、`WriteResult.evidence`。
+
+**教训**:免费 verifier 确实是"可投机"的许可证,但"投机=跳过 LLM"会牺牲智能感;正解是"投机=校验模型的前瞻",让 LLM 始终在驾驶位。
+
 ## 七、开放线
 
 - 模型 lookahead 的真模型 live 净收益量化（predict 的 token 成本 vs 省下的往返）。

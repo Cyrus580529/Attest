@@ -71,12 +71,12 @@ npx vitest run test/live   # 脚本化 live 场景
 
 **已 ship 的内核优化**：渐进披露（播种 `maxPerType=20`，大页面只露轮廓，真模型 25 工单不编 ref）；写路径单源化（读循环改调 `executeWrite`，verify-or-refuse 只此一处）；复盘回喂 surface 文本（闭合读取类任务缺口）。
 
-**切片8 投机执行——三谱系统一**（已 ship，确定性测试绿，**待真模型 live 验收**）：把「投机执行/世界模型/记忆缓存」三条前沿谱系接进内核，统一成「预测→验证→留下或重同步」。核心洞察：为诚实造好的免费环境验证器 `diffSnapshots` 既是接受测试、又是预测词汇来源——一个免费可信的验证器就是「可对模型激进投机」的许可证。落点：① `Prediction`+`matchesPrediction`（满足档）+ `runSpeculative` 统一执行器（复用 `processCall`/`executeWrite`，`attemptReplay` 退役归并）；② `WorldModel` 从账本 `write` 证据学 (签名,动作)→diff，签名作陈旧性闸门；③ `RecordedStep.observedDiff` + `fromMemory` 源 + **部分重放**（命中前缀零-LLM、漂移前缀复用+LLM补尾）+ 程序节点可带 `predict`（模型 lookahead）。**红线守法**：投机是纯性能层，Ledger 对它全然无知，删掉正确性不变；held 是投机硬围栏；漂移即回退（记忆只加速不背书更硬）。A/B 量化（`bench.test.ts`/`spec-bench.ts`）：冷跑 2 次 LLM → 热跑 10/10 命中、合计 0 次。设计见 `docs/specs/…slice8…design.md`，计划见 `docs/plans/…slice8….md`。
+**切片8 投机执行 → 转向「LLM 全程主导 + lookahead」**（已 ship，确定性 161 绿，**读循环 lookahead+世界模型先验真模型 live 通过**）：核心洞察不变——为诚实造好的免费验证器 `diffSnapshots` 是"可投机"的许可证。但初版把它落成"记忆零-LLM 逐字重放",真模型 live 后判定"显蠢、架空模型"。**据用户定调「LLM 必须主导整个系统」转向**：① **删除**零-LLM 逐字重放整条子系统(含 slice4b `PageMemory`)、`runSpeculative`/`fromMemory`/`observedDiff`/`memoryKey`;② **读循环 lookahead 当主路**——模型每回合亲自规划、可一次提多步并给 `predict`,命中则连续执行、落空/未验证/取消即中断本轮回模型重规划(≥1 次 LLM/任务,全程 authored);③ **世界模型转做先验**——`worldModel.learn` 从账本证据学 (签名,动作)→diff,只注入上下文帮模型规划,绝不旁路。保留转正:`Prediction`/`matchesPrediction`、`WorldModel`、程序节点 `predict`、`WriteResult.evidence`。**红线守法**:verify-or-refuse/held/账本判定全不动;效率来源从"跳过模型"改为"让模型一次想更远"。真模型 live(deepseek-v4-pro):第一次 5 回合→第二次(带先验)4 回合,predict 命中 1→2,两次 completed 且诚实。设计+修订见 `docs/specs/…slice8…design.md`。
 
 **真模型验收脚本**：`examples/live-check.ts`（玩具看板 S1/S2/S3）、`examples/live-real.ts`（真实工作台 T1-T4）。绕 happy-dom CORS 用原生 fetch；vitest 的 `test/live` 在 happy-dom 下会撞 CORS，真验收走这两个脚本。
 
 **开放线（优先级序）**：
-0. **切片8 真模型 live 验收**：确定性全绿，但模型 lookahead 的 token 净收益（predict 成本 vs 省下往返）需真模型量化；记忆/世界模型路径的净收益已由 `bench.test.ts` 确定性证正。live 前不得声称"已验收"。
+0. **切片8 收尾**：读循环 lookahead + 世界模型先验已真模型 live 通过(5→4 回合、predict 命中 1→2、诚实)。**未 live 的**：程序模式(codeAsAction)节点 `predict` 的真模型净收益;lookahead 的 token 成本 vs 省下往返需更大样本量化;世界模型跨会话持久化。
 1. **配方"有用"未量**：只证无害（S3 不串味），没做带/不带配方 A/B 比收敛/token。切片8 已搭确定性 A/B 台（`spec-bench.ts`）可复用。量了再决定转默认、ping-pong 退休。
 2. **发布工程件**：README / exports map / 版本 / 记忆持久化全缺——"当库发布"的硬门槛。
 3. 多模型验收（现仅 deepseek-v4-pro）；更多真实页面（导航/分页/嵌套）。
