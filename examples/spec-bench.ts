@@ -1,5 +1,5 @@
-// A/B 量化台：带/不带记忆+世界模型投机，比 LLM 调用数（确定性，FakeLlm，无需 API key）。
-// 目的：直观展示「投机省下的往返」——命中投机的热跑应几乎零 LLM 调用。
+// A/B 量化台：同一多步任务，反应式（一步一回合）vs lookahead（一回合批量+predict）。
+// LLM 始终主导（两者都由模型 authored）；效率来自"一次想更远"——lookahead 回合数更少。
 // 跑法：npx tsx examples/spec-bench.ts
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
 GlobalRegistrator.register();
@@ -8,16 +8,11 @@ const { parseContract } = await import('../src/contract/parseContract');
 const { createAgent } = await import('../src/core/loop');
 const { FakeLlmAdapter, toolCallTurn } = await import('../src/testing/fakeLlmAdapter');
 const { FakeHostAdapter } = await import('../src/testing/fakeHostAdapter');
-const { PageMemory } = await import('../src/memory/pageMemory');
-const { WorldModel } = await import('../src/memory/worldModel');
 import type { AgentStep } from '../src/core/loop';
+import type { LlmTurn } from '../src/llm/types';
 
-function board() {
-  document.body.innerHTML = `<input data-agent-control="c" value="0"/>`;
-  return parseContract(document.body, '/p');
-}
-function board5() {
-  document.body.innerHTML = `<input data-agent-control="c" value="5"/>`;
+function build(html: string) {
+  document.body.innerHTML = html;
   return parseContract(document.body, '/p');
 }
 async function collect(gen: AsyncGenerator<AgentStep>) {
@@ -25,33 +20,35 @@ async function collect(gen: AsyncGenerator<AgentStep>) {
   for await (const s of gen) out.push(s);
   return out;
 }
-
-const memory = new PageMemory();
-const wm = new WorldModel();
-
-const cold = new FakeLlmAdapter([
-  toolCallTurn('setControl', { ref: 'control:c', value: '5' }),
-  toolCallTurn('finish', { answer: 'ok' }),
-]);
-await collect(
-  createAgent({ llm: cold, host: new FakeHostAdapter(board(), { 'control:c': board5() }), memory, worldModel: wm }).run('设置c'),
-);
-const coldCalls = cold.calls.length;
-
-const N = 10;
-let hotCalls = 0;
-let hits = 0;
-for (let i = 0; i < N; i++) {
-  const hot = new FakeLlmAdapter([toolCallTurn('finish', { answer: 'fallback' })]);
-  const steps = await collect(
-    createAgent({ llm: hot, host: new FakeHostAdapter(board(), { 'control:c': board5() }), memory, worldModel: wm }).run('设置c'),
-  );
-  hotCalls += hot.calls.length;
-  if (steps.some((s) => s.type === 'speculate' && s.hit)) hits++;
+function batchTurn(calls: { name: string; arguments: Record<string, unknown> }[]): LlmTurn {
+  return { content: '', toolCalls: calls.map((c, i) => ({ id: `c${i}`, name: c.name, arguments: c.arguments })) };
 }
 
-console.log('=== 投机执行 A/B 量化 ===');
-console.log(`冷跑（建记忆）LLM 调用: ${coldCalls}`);
-console.log(`热跑 ${N} 次：命中投机 ${hits}/${N}，LLM 调用合计 ${hotCalls}`);
-console.log(`每任务均摊 LLM 调用：冷 ${coldCalls} → 热 ${(hotCalls / N).toFixed(2)}`);
+const c0 = () => build(`<input data-agent-control="a" value="0"/><input data-agent-control="b" value="0"/>`);
+const cA = () => build(`<input data-agent-control="a" value="1"/><input data-agent-control="b" value="0"/>`);
+const cB = () => build(`<input data-agent-control="a" value="1"/><input data-agent-control="b" value="1"/>`);
+const transitions = { 'control:a': cA(), 'control:b': cB() };
+
+// 反应式：一步一回合
+const reactive = new FakeLlmAdapter([
+  toolCallTurn('setControl', { ref: 'control:a', value: '1' }),
+  toolCallTurn('setControl', { ref: 'control:b', value: '1' }),
+  toolCallTurn('finish', { answer: 'done' }),
+]);
+await collect(createAgent({ llm: reactive, host: new FakeHostAdapter(c0(), transitions) }).run('把 a、b 设为1'));
+
+// lookahead：一回合批量 + predict
+const lookahead = new FakeLlmAdapter([
+  batchTurn([
+    { name: 'setControl', arguments: { ref: 'control:a', value: '1', predict: ['control:a: 0 → 1'] } },
+    { name: 'setControl', arguments: { ref: 'control:b', value: '1', predict: ['control:b: 0 → 1'] } },
+    { name: 'finish', arguments: { answer: 'done' } },
+  ]),
+]);
+const steps = await collect(createAgent({ llm: lookahead, host: new FakeHostAdapter(c0(), transitions) }).run('把 a、b 设为1'));
+
+console.log('=== lookahead A/B 量化（LLM 始终主导）===');
+console.log(`反应式（一步一回合）LLM 调用: ${reactive.calls.length}`);
+console.log(`lookahead（一回合批量+predict）LLM 调用: ${lookahead.calls.length}，命中 ${steps.filter((s) => s.type === 'speculate' && s.hit).length} 步`);
+console.log(`往返节省：${reactive.calls.length} → ${lookahead.calls.length}`);
 process.exit(0);

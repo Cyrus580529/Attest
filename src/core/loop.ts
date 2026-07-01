@@ -2,7 +2,6 @@ import type { LlmAdapter } from '../llm/types';
 import type { HostAdapter } from '../host/types';
 import type { ConfirmFn } from '../honesty/types';
 import { READ_LOOP_TOOLS, ACT_TOOLS, PROGRAM_ACT_TOOLS } from './tools';
-import { PageMemory } from '../memory/pageMemory';
 import { RecipeBook } from '../memory/recipeBook';
 import type { WorldModel } from '../memory/worldModel';
 import { defaultSystemPrompt, programSystemPrompt } from './prompts';
@@ -19,12 +18,11 @@ export interface AgentOptions {
   readOnly?: boolean;
   maxSteps?: number;
   systemPrompt?: string;
-  memory?: PageMemory;
   /** opt-in：act 模式改用 Code-as-Action（[runProgram, finish]）。 */
   codeAsAction?: boolean;
   /** opt-in：codeAsAction 路径的配方先验——成功程序录入、同签名页面召回注入（不做 verbatim 重放）。 */
   recipes?: RecipeBook;
-  /** opt-in：世界模型（谱系②）——验证写即学 动作→diff，为记忆重放补预测。 */
+  /** opt-in：世界模型（谱系②）——验证写即学 动作→diff，作为下次同页任务的先验注入（LLM 仍主导）。 */
   worldModel?: WorldModel;
 }
 
@@ -40,7 +38,6 @@ export function createAgent(options: AgentOptions) {
     tools: options.readOnly ? READ_LOOP_TOOLS : programMode ? PROGRAM_ACT_TOOLS : ACT_TOOLS,
     systemPrompt: options.systemPrompt ?? (programMode ? programSystemPrompt() : defaultSystemPrompt()),
     confirm: options.confirm ?? DENY,
-    memory: options.memory,
     recipes: options.recipes,
     worldModel: options.worldModel,
     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,

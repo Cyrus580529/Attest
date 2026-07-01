@@ -1,7 +1,8 @@
-// 切片8 投机执行 —— 真模型 live 验收。
-// 读循环 + memory + worldModel，同一(页面,任务)连跑两次：第二次应命中投机、LLM 往返骤降，且仍诚实。
+// 切片8 投机执行 —— 真模型 live 验收（LLM 主导 + lookahead + 世界模型先验）。
+// 读循环：模型每回合亲自规划，可一次提多步并给 predict；世界模型把已知效果作先验注入。
+// 同一(页,任务)连跑两次：第二次带世界模型先验，观察模型是否更自信地 lookahead、往返更少，且仍诚实。
 // 跑法：
-//   $env:ATTEST_API_KEY="..."; $env:ATTEST_BASE_URL="https://api.deepseek.com"; $env:ATTEST_MODEL="deepseek-chat"
+//   $env:ATTEST_API_KEY="..."; $env:ATTEST_BASE_URL="https://api.deepseek.com"; $env:ATTEST_MODEL="deepseek-v4-pro"
 //   npx tsx examples/live-spec.ts
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
 
@@ -10,18 +11,17 @@ GlobalRegistrator.register();
 
 const key = process.env.ATTEST_API_KEY ?? '';
 const baseUrl = process.env.ATTEST_BASE_URL ?? 'https://api.deepseek.com';
-const model = process.env.ATTEST_MODEL ?? 'deepseek-chat';
+const model = process.env.ATTEST_MODEL ?? 'deepseek-v4-pro';
 if (!key) { console.error('需要 ATTEST_API_KEY'); process.exit(1); }
 
 const { createAgent } = await import('../src/core/loop');
 const { createDomHostAdapter } = await import('../src/adapters/domHostAdapter');
 const { createOpenAiAdapter } = await import('../src/llm/openaiAdapter');
-const { PageMemory } = await import('../src/memory/pageMemory');
 const { WorldModel } = await import('../src/memory/worldModel');
 import type { AgentStep } from '../src/core/loop';
 import type { LlmAdapter, LlmMessage, ToolSchema } from '../src/llm/types';
 
-/** 包一层计数：统计真模型 step 被调用几次（= LLM 往返数）。 */
+/** 包一层计数：统计真模型 step 被调用几次（= LLM 往返数/回合数）。 */
 function counting(inner: LlmAdapter) {
   let calls = 0;
   const adapter: LlmAdapter = {
@@ -33,7 +33,7 @@ function counting(inner: LlmAdapter) {
   return { adapter, get calls() { return calls; } };
 }
 
-/** 建一个简单契约页：优先级下拉 + 保存按钮（低危，改 notice）+ notice surface。 */
+/** 简单契约页：优先级下拉 + 保存按钮（低危，改 notice）+ notice surface。多步任务，便于观察 lookahead。 */
 function buildPage(): void {
   document.body.innerHTML =
     `<select data-agent-control="priority" aria-label="优先级"><option value="低">低</option><option value="高">高</option></select>` +
@@ -60,7 +60,6 @@ function show(s: AgentStep): void {
   else if (s.type === 'error') console.log(`  ⚠️ error ${s.tool}: ${s.error}`);
 }
 
-const memory = new PageMemory();
 const wm = new WorldModel();
 const TASK = '把优先级改成"高"，然后点保存。';
 
@@ -70,8 +69,7 @@ async function run(label: string): Promise<number> {
   const agent = createAgent({
     llm: c.adapter,
     host: createDomHostAdapter({ getUrl: () => '/settings' }),
-    memory,
-    worldModel: wm,
+    worldModel: wm, // 先验来源：第一次学、第二次注入（LLM 仍主导）
     maxSteps: 8,
     confirm: async () => ({ approved: true, scope: 'all' }),
   });
@@ -79,16 +77,16 @@ async function run(label: string): Promise<number> {
   const steps: AgentStep[] = [];
   for await (const s of agent.run(TASK)) { steps.push(s); show(s); }
   const f = steps.find((s) => s.type === 'finish');
-  const specHit = steps.some((s) => s.type === 'speculate' && s.hit);
-  console.log(`  >>> LLM 往返=${c.calls}；outcome=${f?.type === 'finish' ? f.outcome : '?'}；命中投机=${specHit}`);
+  const hits = steps.filter((s) => s.type === 'speculate' && s.hit).length;
+  const miss = steps.filter((s) => s.type === 'mispredict').length;
+  console.log(`  >>> LLM 回合=${c.calls}；outcome=${f?.type === 'finish' ? f.outcome : '?'}；predict 命中=${hits}、落空=${miss}`);
   return c.calls;
 }
 
-const cold = await run('第一次（冷跑，建记忆/世界模型）');
-const hot = await run('第二次（热跑，应命中投机、LLM 往返骤降）');
+const first = await run('第一次（无先验，模型现场规划）');
+const second = await run('第二次（带世界模型先验，应更自信 lookahead）');
 
-console.log('\n=== 切片8 判定 ===');
-console.log(`冷跑 LLM 往返=${cold} → 热跑 LLM 往返=${hot}`);
-console.log(hot < cold ? '✅ 热跑往返下降——投机生效' : '⚠️ 热跑未下降——需查记忆键/漂移/命中');
-console.log('人工核验：热跑 outcome 是否仍正确、叙述是否诚实、有无乱动。');
+console.log('\n=== 切片8 判定（LLM 主导）===');
+console.log(`第一次 LLM 回合=${first} → 第二次=${second}`);
+console.log('人工核验：两次都由模型 authored（非旁路）；outcome 正确、叙述诚实；lookahead 命中越多、回合越少越好。');
 process.exit(0);

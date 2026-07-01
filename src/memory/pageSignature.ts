@@ -9,11 +9,3 @@ export function pageSignature(s: PageSnapshot): string {
   const surfNames = uniqSorted(s.surfaces.map((x) => x.name));
   return `${route}|obj:${objTypes}|act:${actNames}|ctrl:${ctrlNames}|surf:${surfNames}`;
 }
-
-export function goalKey(goal: string): string {
-  return goal.trim().toLowerCase().replace(/\s+/g, ' ');
-}
-
-export function memoryKey(s: PageSnapshot, goal: string): string {
-  return `${pageSignature(s)}|>${goalKey(goal)}`;
-}

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseContract } from '../../src/contract/parseContract';
-import { pageSignature, goalKey, memoryKey } from '../../src/memory/pageSignature';
+import { pageSignature } from '../../src/memory/pageSignature';
 
 function build(html: string, url = '/board') {
   document.body.innerHTML = html;
@@ -18,19 +18,5 @@ describe('pageSignature', () => {
     const a = build(`<button data-agent-action="open">o</button>`);
     const b = build(`<button data-agent-action="resolve">r</button>`);
     expect(pageSignature(a)).not.toBe(pageSignature(b));
-  });
-});
-
-describe('goalKey', () => {
-  it('大小写/空白归一化', () => {
-    expect(goalKey('  看 所有  工单 ')).toBe('看 所有 工单');
-    expect(goalKey('LOOK')).toBe('look');
-  });
-});
-
-describe('memoryKey', () => {
-  it('拼接签名与目标', () => {
-    const s = build(`<div data-agent-object="ticket:1">A</div>`);
-    expect(memoryKey(s, '看工单')).toBe(`${pageSignature(s)}|>看工单`);
   });
 });

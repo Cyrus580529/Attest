@@ -26,7 +26,7 @@ if (!key) {
 const { createAgent } = await import('../src/core/loop');
 const { createDomHostAdapter } = await import('../src/adapters/domHostAdapter');
 const { createOpenAiAdapter } = await import('../src/llm/openaiAdapter');
-const { PageMemory } = await import('../src/memory/pageMemory');
+const { WorldModel } = await import('../src/memory/worldModel');
 const { RecipeBook } = await import('../src/memory/recipeBook');
 const { pageSignature } = await import('../src/memory/pageSignature');
 
@@ -46,7 +46,7 @@ function loadBoard(): void {
   });
 }
 
-let memory: InstanceType<typeof PageMemory> | undefined = new PageMemory();
+let worldModel: InstanceType<typeof WorldModel> | undefined = new WorldModel();
 const recipes = new RecipeBook(); // Code-as-Action 配方先验：会话内成功程序累积、同签名召回注入
 let programMode = false; // Code-as-Action 开关（/code 切换）
 const host = createDomHostAdapter({ getUrl: () => '/board' });
@@ -96,8 +96,8 @@ function makeAgent() {
   return createAgent({
     llm: createOpenAiAdapter({ apiKey: key, baseUrl, model, fetchImpl: nodeFetch }),
     host,
-    // 挤牙膏模式用 PageMemory（零-LLM 重放）；Code-as-Action 用 RecipeBook（配方先验注入）
-    memory: programMode ? undefined : memory,
+    // 挤牙膏模式用 WorldModel（已知效果作先验，LLM 仍主导）；Code-as-Action 用 RecipeBook（配方先验注入）
+    worldModel: programMode ? undefined : worldModel,
     recipes: programMode ? recipes : undefined,
     codeAsAction: programMode,
     confirm: async (intent) => {
@@ -112,8 +112,8 @@ function makeAgent() {
   });
 }
 
-console.log(`\nAttest REPL  |  ${baseUrl} / ${model}  |  记忆:开  |  模式:挤牙膏(单步)`);
-console.log('命令: /reset 重置页面 | /memory 开关记忆 | /code 切换"交清单"模式(Code-as-Action) | /quit 退出 | 其它=对 agent 说话');
+console.log(`\nAttest REPL  |  ${baseUrl} / ${model}  |  世界模型:开  |  模式:挤牙膏(单步)`);
+console.log('命令: /reset 重置页面 | /memory 开关世界模型先验 | /code 切换"交清单"模式(Code-as-Action) | /quit 退出 | 其它=对 agent 说话');
 console.log('示范页: 3 个工单(ticket) + open + resolve(高危) + detail');
 console.log('试试(开 /code 后): 把每个工单都打开看一眼，然后全部标记为已解决\n');
 loadBoard();
@@ -128,8 +128,8 @@ for (;;) {
     continue;
   }
   if (line === '/memory') {
-    memory = memory ? undefined : new PageMemory();
-    console.log(`（记忆已${memory ? '开' : '关'}）`);
+    worldModel = worldModel ? undefined : new WorldModel();
+    console.log(`（世界模型先验已${worldModel ? '开' : '关'}）`);
     continue;
   }
   if (line === '/code') {

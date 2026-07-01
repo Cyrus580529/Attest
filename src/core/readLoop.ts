@@ -8,19 +8,14 @@ import { serializeSnapshot } from './serialize';
 import { executeWrite } from './execWrite';
 import { Ledger } from '../honesty/ledger';
 import { guardFinish } from '../honesty/narrationGuard';
-import { memoryKey } from '../memory/pageSignature';
-import { recordRef, type RecordedStep } from '../memory/pageMemory';
 import type { WorldModel } from '../memory/worldModel';
 import { finishStep } from './finish';
-import { runSpeculative } from './speculation/runSpeculative';
-import { fromMemory } from './speculation/sources';
 import { matchesPrediction } from './speculation/prediction';
 import type { AgentStep, LoopDeps } from './loopTypes';
 
 interface CallResult {
   steps: AgentStep[];
   toolResult: string;
-  recorded?: RecordedStep;
 }
 
 /** 单个工具调用的派发：observe/read 走读路径，write 走"高危held→verify"写路径；每步记账。 */
@@ -57,11 +52,7 @@ export async function processCall(
       result = serializeSnapshot(r.snapshot);
     }
     ledger.record({ kind: 'observe', tool: name, detail: result });
-    return {
-      steps: [{ type: 'observation', tool: name, refId, result }],
-      toolResult: result,
-      recorded: { tool: name, ref: recordRef(before, res.ref) },
-    };
+    return { steps: [{ type: 'observation', tool: name, refId, result }], toolResult: result };
   }
 
   const writeKind: RefKind | undefined = WRITE_REF_KINDS[name];
@@ -69,16 +60,13 @@ export async function processCall(
     const refId = String(call.arguments.ref ?? '');
     const value = name === 'setControl' ? String(call.arguments.value ?? '') : undefined;
     // 复用唯一的写原语（verify-or-refuse + 高危 held 只此一处）。grantedScopes 由调用方
-    // 传入：读循环主路共享一个（作用域授权 all 生效）；重放传一次性空集（高危仍逐个确认）。
+    // 传入：读循环主路共享一个（作用域授权 all 生效）。
     const wr = await executeWrite(host, ledger, confirm, grantedScopes, {
       tool: name as 'setControl' | 'invokeAction',
       refId,
       value,
     });
-    const recorded = wr.ref
-      ? { tool: name, ref: recordRef(before, wr.ref), value, observedDiff: wr.evidence }
-      : undefined;
-    // 世界模型：验证写即学 (签名, 名) → diff——纯从证据，供后续为记忆步补预测。
+    // 世界模型：验证写即学 (签名, 名) → diff——纯从证据，作为下次同页任务的先验（LLM 仍主导）。
     if (worldModel && wr.verified && wr.evidence && wr.evidence.length > 0) {
       const node =
         name === 'setControl'
@@ -86,51 +74,46 @@ export async function processCall(
           : before.actions.find((a) => a.ref.id === refId);
       if (node) worldModel.learn(before, node.name, { changed: true, details: wr.evidence });
     }
-    return { steps: wr.steps, toolResult: wr.toolResult, recorded };
+    return { steps: wr.steps, toolResult: wr.toolResult };
   }
 
   ledger.record({ kind: 'error', tool: name, detail: `unknown tool "${name}"` });
   return { steps: [{ type: 'error', tool: name, error: `unknown tool "${name}"` }], toolResult: 'ERROR: unknown tool' };
 }
 
-/** 读循环（单步 tool-calling）：记忆命中先投机重放（前缀复用），否则逐步问模型；completed 才录制记忆。 */
-export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGenerator<AgentStep> {
-  const { llm, host, tools, systemPrompt, confirm, memory, worldModel, maxSteps } = deps;
-  const ledger = new Ledger();
-  const recorded: RecordedStep[] = [];
-  const grantedScopes = new Set<string>(); // 本 run 内共享的作用域授权（scope: 'all'）
-  const key = memory ? memoryKey(host.snapshot(), userMessage) : '';
+/** 世界模型先验：把当前页可见动作的「已知可观察效果」拼成提示，帮模型规划/写 predict（不旁路模型）。 */
+function worldModelPrior(deps: LoopDeps): string {
+  const { worldModel, host } = deps;
+  if (!worldModel) return '';
+  const snap = host.snapshot();
+  const lines = snap.actions
+    .map((a) => ({ name: a.name, p: worldModel.predict(snap, a.name) }))
+    .filter((x) => x.p)
+    .map((x) => `- ${x.name} → 预期变化: ${x.p!.expectDetails.join('; ')}`);
+  return lines.length > 0
+    ? `\n\n（已知动作效果，可用于规划与 predict；仍以实际验证为准）\n${lines.join('\n')}`
+    : '';
+}
 
-  if (memory) {
-    const entry = memory.lookup(key);
-    if (entry) {
-      const res = yield* runSpeculative(fromMemory(entry.steps, worldModel), {
-        host,
-        ledger,
-        confirm,
-        grantedScopes,
-        worldModel,
-      });
-      if (res.done) return;
-      // 部分重放：已验证前缀留在 ledger，漂移/失效处交下方 LLM 循环补尾（余下重新规划）。
-      // 不续跑录制尾巴——页面已偏离，陈旧预测不可信（红线：记忆只加速不背书）。
-    }
-  }
+/**
+ * 读循环（单步 tool-calling，LLM 全程主导）：模型每回合亲自规划，可一次提多步并给 predict 做 lookahead；
+ * 世界模型（若有）把「已知动作→diff」作先验注入，帮模型更自信地规划——但绝不旁路模型。
+ */
+export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGenerator<AgentStep> {
+  const { llm, host, tools, systemPrompt, confirm, worldModel, maxSteps } = deps;
+  const ledger = new Ledger();
+  const grantedScopes = new Set<string>(); // 本 run 内共享的作用域授权（scope: 'all'）
 
   const messages: LlmMessage[] = [
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: userMessage },
+    { role: 'user', content: userMessage + worldModelPrior(deps) },
   ];
 
   for (let i = 0; i < maxSteps; i++) {
     const turn = await llm.step(messages, tools);
 
     if (turn.toolCalls.length === 0) {
-      const step = finishStep(turn.content, ledger);
-      if (memory && step.type === 'finish' && step.outcome === 'completed') {
-        memory.record(key, [...recorded, { tool: 'finish', answer: turn.content.trim() }]);
-      }
-      yield step;
+      yield finishStep(turn.content, ledger);
       return;
     }
 
@@ -139,18 +122,12 @@ export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGe
     let finished = false;
     for (const call of turn.toolCalls) {
       if (call.name === 'finish') {
-        const answer = String(call.arguments.answer ?? '').trim();
-        const step = finishStep(answer, ledger);
-        if (memory && step.type === 'finish' && step.outcome === 'completed') {
-          memory.record(key, [...recorded, { tool: 'finish', answer }]);
-        }
-        yield step;
+        yield finishStep(String(call.arguments.answer ?? '').trim(), ledger);
         finished = true;
         break;
       }
       const result = await processCall(call, host, ledger, confirm, grantedScopes, worldModel);
       for (const s of result.steps) yield s;
-      if (result.recorded) recorded.push(result.recorded);
       messages.push({ role: 'tool', toolCallId: call.id, content: result.toolResult });
 
       // lookahead：模型可在一回合内提多步并给 predict。写步命中预测则继续执行本回合后续步；

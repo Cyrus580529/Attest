@@ -33,12 +33,11 @@ export type { Program, Node, Query, Cond } from './core/program/types';
 export { runProgram } from './core/program/interpreter';
 export type { InterpreterDeps, ProgramResult } from './core/program/interpreter';
 
-// ── 记忆（opt-in，传给 createAgent）──
-export { PageMemory } from './memory/pageMemory';
+// ── 记忆 / 先验（opt-in，传给 createAgent）──
 export { RecipeBook } from './memory/recipeBook';
 export type { Recipe } from './memory/recipeBook';
 
-// ── 投机执行（谱系②世界模型 opt-in；预测原语类型）──
+// ── 投机执行（谱系②世界模型 opt-in；预测原语类型）——先验注入，LLM 仍主导 ──
 export { WorldModel } from './memory/worldModel';
 export type { Prediction } from './core/speculation/prediction';
 

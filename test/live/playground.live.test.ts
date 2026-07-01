@@ -4,8 +4,8 @@ import { resolve } from 'node:path';
 import { createAgent, type AgentStep } from '../../src/core/loop';
 import { createDomHostAdapter } from '../../src/adapters/domHostAdapter';
 import { createOpenAiAdapter } from '../../src/llm/openaiAdapter';
-import { PageMemory } from '../../src/memory/pageMemory';
 import { RecipeBook } from '../../src/memory/recipeBook';
+import { WorldModel } from '../../src/memory/worldModel';
 import { pageSignature } from '../../src/memory/pageSignature';
 
 // 跑法（PowerShell）：
@@ -31,12 +31,12 @@ function loadBoard(): void {
   });
 }
 
-function makeAgent(memory?: PageMemory) {
+function makeAgent(worldModel?: WorldModel) {
   const llm = createOpenAiAdapter({ apiKey: key, baseUrl, model });
   return createAgent({
     llm,
     host: createDomHostAdapter({ getUrl: () => '/board' }),
-    memory,
+    worldModel,
     confirm: (intent) => {
       console.log(`   [HELD] 高风险「${intent.label}」→ 演示自动批准`);
       return Promise.resolve({ approved: true });
@@ -97,11 +97,11 @@ describe.skipIf(!key)(`live playground (${baseUrl} / ${model})`, () => {
     await drive('高危写', makeAgent(), '把这个工单标记为已解决');
   }, 120000);
 
-  it('③ 记忆：同任务第二次零-LLM 重放', async () => {
-    const memory = new PageMemory();
-    await drive('第一次（走 LLM）', makeAgent(memory), '列出所有工单并总结一句');
+  it('③ 世界模型先验：同页第二次任务带已知效果先验（LLM 仍主导，应更稳/更快）', async () => {
+    const wm = new WorldModel();
+    await drive('第一次（无先验，走 LLM）', makeAgent(wm), '把第一个工单标记为已解决');
     loadBoard();
-    await drive('第二次（应⚡replay）', makeAgent(memory), '列出所有工单并总结一句');
+    await drive('第二次（带世界模型先验）', makeAgent(wm), '把第二个工单标记为已解决');
   }, 180000);
 
   it('④ Code-as-Action：一段程序批量处理（held + 作用域授权）', async () => {

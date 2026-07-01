@@ -1,7 +1,6 @@
 import type { LlmAdapter, ToolSchema } from '../llm/types';
 import type { HostAdapter } from '../host/types';
 import type { ConfirmFn, Intent, LedgerEntry, Outcome } from '../honesty/types';
-import type { PageMemory } from '../memory/pageMemory';
 import type { RecipeBook } from '../memory/recipeBook';
 import type { WorldModel } from '../memory/worldModel';
 
@@ -26,9 +25,8 @@ export interface LoopDeps {
   tools: ToolSchema[];
   systemPrompt: string;
   confirm: ConfirmFn;
-  memory?: PageMemory;
   recipes?: RecipeBook;
-  /** opt-in：从账本学 动作→diff 因果，为记忆步补预测（谱系②世界模型）。 */
+  /** opt-in：从账本学 动作→diff 因果，作为下次同页任务的先验注入（谱系②世界模型；LLM 仍主导）。 */
   worldModel?: WorldModel;
   maxSteps: number;
 }
