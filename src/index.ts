@@ -21,6 +21,10 @@ export { parseVoix } from './contract/voix';
 export type { HostAdapter, HostResult } from './host/types';
 export { createDomHostAdapter } from './adapters/domHostAdapter';
 export type { DomHostAdapterOptions } from './adapters/domHostAdapter';
+export { createVoixHostAdapter } from './adapters/voixHostAdapter';
+export type { VoixHostAdapterOptions } from './adapters/voixHostAdapter';
+export { parseVoixWithElements } from './contract/voix';
+export type { VoixParseResult } from './contract/voix';
 
 // ── LLM 适配器 ──
 export type { LlmAdapter, LlmMessage, LlmToolCall, LlmTurn, ToolSchema, LlmRole } from './llm/types';
