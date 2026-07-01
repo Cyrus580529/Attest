@@ -19,6 +19,8 @@ export interface WriteResult {
   verified: boolean;
   /** 成功路径回传解析出的 ref，供读循环记忆录制（recordRef）。 */
   ref?: Ref;
+  /** 本次写经 diffSnapshots 验证出的证据 details——供记忆/世界模型录制为预测。 */
+  evidence?: string[];
 }
 
 /**
@@ -93,5 +95,5 @@ export async function executeWrite(
     ? `done; 证据: ${evidence.details.join('; ')}`
     : '已执行，但未检测到可观察变化（未验证）。';
   const toolResult = confirmed ? `（此高风险操作已由用户确认后才执行）${base}` : base;
-  return { steps, toolResult, verified: evidence.changed, ref: res.ref };
+  return { steps, toolResult, verified: evidence.changed, ref: res.ref, evidence: evidence.details };
 }

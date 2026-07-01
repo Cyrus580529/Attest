@@ -9,6 +9,8 @@ export interface RecordedStep {
   ref?: RecordedRef;
   value?: string;
   answer?: string;
+  /** 录制时该写步经验证的 diff details——重放时作预测，抓页面行为漂移。 */
+  observedDiff?: string[];
 }
 
 export interface MemoryEntry {

@@ -69,7 +69,9 @@ async function processCall(
       refId,
       value,
     });
-    const recorded = wr.ref ? { tool: name, ref: recordRef(before, wr.ref), value } : undefined;
+    const recorded = wr.ref
+      ? { tool: name, ref: recordRef(before, wr.ref), value, observedDiff: wr.evidence }
+      : undefined;
     return { steps: wr.steps, toolResult: wr.toolResult, recorded };
   }
 

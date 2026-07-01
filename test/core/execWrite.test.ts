@@ -150,4 +150,18 @@ describe('executeWrite', () => {
     expect(r.steps[0]?.type).toBe('error');
     expect(r.verified).toBe(false);
   });
+
+  it('WriteResult 回传本次验证的 evidence（供记忆/世界模型录制为预测）', async () => {
+    const before = makeSnap(`<input data-agent-control="qty" value="0"/>`);
+    const after = makeSnap(`<input data-agent-control="qty" value="5"/>`);
+    const host = new FakeHostAdapter(before, { 'control:qty': after });
+    const r = await executeWrite(host, new Ledger(), DENY, new Set(), {
+      tool: 'setControl',
+      refId: 'control:qty',
+      value: '5',
+    });
+    expect(r.verified).toBe(true);
+    expect(r.evidence).toBeDefined();
+    expect(r.evidence!.some((d) => d.includes('control:qty'))).toBe(true);
+  });
 });
