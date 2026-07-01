@@ -98,17 +98,22 @@ export function createOpenAiAdapter(options: OpenAiAdapterOptions): LlmAdapter {
   }
 
   async function fetchWithTimeout(body: string): Promise<Response> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const fetchPromise = doFetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${options.apiKey}` },
+      body,
+    });
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return fetchPromise;
+    // 用 Promise.race 计时，不依赖 AbortSignal——避免跨 realm（如 happy-dom 覆盖全局 + Node 原生 fetch）
+    // 的 signal 类型不匹配。代价：超时的底层请求不会被真正取消，但对 LLM 调用可接受，鲁棒性优先。
+    let timer: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new LlmRequestError(`请求超时（${timeoutMs}ms）`, undefined, true)), timeoutMs);
+    });
     try {
-      return await doFetch(`${baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${options.apiKey}` },
-        body,
-        signal: controller.signal,
-      });
+      return await Promise.race([fetchPromise, timeout]);
     } finally {
-      clearTimeout(timer);
+      clearTimeout(timer!);
     }
   }
 

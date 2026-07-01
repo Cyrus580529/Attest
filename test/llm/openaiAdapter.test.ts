@@ -134,16 +134,14 @@ describe('openaiAdapter — 硬化（重试/退避/超时/分类）', () => {
     expect(slept[0]).toBe(2000); // Retry-After: 2 秒
   });
 
-  it('超时 → 中止本次尝试并按重试处理', async () => {
+  it('超时 → 按重试处理（Promise.race 计时，不依赖 AbortSignal，跨 realm 安全）', async () => {
     let n = 0;
-    const fetchImpl = ((_url: string, init: RequestInit) =>
-      new Promise((resolve, reject) => {
-        n++;
-        init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
-        // 永不 resolve → 靠超时 abort
-      })) as unknown as typeof fetch;
+    const fetchImpl = (() => {
+      n++;
+      return new Promise<Response>(() => {}); // 永不 resolve → 靠超时兜底
+    }) as unknown as typeof fetch;
     const adapter = createOpenAiAdapter({ apiKey: 'sk-test', fetchImpl, sleepImpl: noSleep, timeoutMs: 10, maxRetries: 1 });
-    await expect(adapter.step([], [])).rejects.toThrow();
+    await expect(adapter.step([], [])).rejects.toThrow(/超时|timeout/i);
     expect(n).toBe(2); // 超时可重试：1 + 1
   });
 });
