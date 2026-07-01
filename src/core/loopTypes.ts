@@ -11,6 +11,8 @@ export type AgentStep =
   | { type: 'held'; tool: string; refId: string; intent: Intent }
   | { type: 'cancelled'; tool: string; refId: string; reason: string }
   | { type: 'replay'; tool: string; refId?: string }
+  | { type: 'speculate'; tool: string; refId?: string; hit: boolean }
+  | { type: 'mispredict'; tool: string; refId?: string; expected: string[]; actual: string[] }
   | { type: 'thinking'; text: string }
   | { type: 'plan'; items: string[] }
   | { type: 'error'; tool: string; refId?: string; error: string }
