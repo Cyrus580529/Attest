@@ -38,6 +38,10 @@ export { PageMemory } from './memory/pageMemory';
 export { RecipeBook } from './memory/recipeBook';
 export type { Recipe } from './memory/recipeBook';
 
+// ── 投机执行（谱系②世界模型 opt-in；预测原语类型）──
+export { WorldModel } from './memory/worldModel';
+export type { Prediction } from './core/speculation/prediction';
+
 // ── 诚实层：检视 AgentStep 结果所需的类型 ──
 export type { Intent, Evidence, LedgerEntry, Outcome, ConfirmFn } from './honesty/types';
 

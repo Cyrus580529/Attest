@@ -17,11 +17,12 @@ describe('public API surface', () => {
     }
   });
 
-  it('暴露 Code-as-Action / 记忆 / 测试双适配器', () => {
+  it('暴露 Code-as-Action / 记忆 / 世界模型 / 测试双适配器', () => {
     expect(typeof api.validateProgram).toBe('function');
     expect(typeof api.runProgram).toBe('function');
     expect(typeof api.PageMemory).toBe('function');
     expect(typeof api.RecipeBook).toBe('function');
+    expect(typeof api.WorldModel).toBe('function');
     expect(typeof api.FakeLlmAdapter).toBe('function');
     expect(typeof api.FakeHostAdapter).toBe('function');
   });
