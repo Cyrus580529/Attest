@@ -2,8 +2,25 @@
 // Attest 补它明确不做的三样——outcome 验证、信任、契约漂移。
 // VOIX 运行时：调用 = 在 tool 元素上派发 `call` 事件（参数在 e.detail）；带 `return` 的 tool 由 handler
 // 派发 `return` 事件回传结果。<prop> 声明参数（本刀先不接参数，留待下一刀动 invokeAction 签名）。
-import type { ActionNode, PageSnapshot, Risk, SurfaceNode } from '../types';
+import type { ActionNode, ParamSpec, PageSnapshot, Risk, SurfaceNode } from '../types';
 import { RefMinter } from './refs';
+
+const PROP_TYPES = new Set(['string', 'number', 'boolean']);
+
+/** 解析一个 <tool> 的 <prop> 子元素 → 参数声明（无 prop 返回 undefined）。 */
+function parseProps(toolEl: Element): ParamSpec[] | undefined {
+  const props: ParamSpec[] = [];
+  for (const p of toolEl.querySelectorAll('prop')) {
+    const name = clean(p.getAttribute('name'));
+    if (!name) continue;
+    const rawType = clean(p.getAttribute('type'));
+    const type = (PROP_TYPES.has(rawType) ? rawType : 'string') as ParamSpec['type'];
+    const description = clean(p.getAttribute('description'));
+    const spec: ParamSpec = { name, type, required: p.hasAttribute('required') };
+    props.push(description ? { ...spec, description } : spec);
+  }
+  return props.length > 0 ? props : undefined;
+}
 
 // 保守风险启发式：VOIX 不定义 risk，危险动词→high（Attest 据此 held）。可被显式 risk="high" 覆盖。
 const HIGH_RISK = /delete|remove|destroy|删除|删|清空|移除|pay|支付|purchase|checkout|confirm|确认|submit|提交|发送|send|ship|发布|deploy/i;
@@ -30,7 +47,8 @@ function parse(root: ParentNode, url: string): VoixParseResult {
     const risk: Risk =
       el.getAttribute('risk') === 'high' || HIGH_RISK.test(`${name} ${description}`) ? 'high' : 'low';
     const ref = minter.mint('action', name);
-    actions.push({ ref, name, label: description, risk, provenance: 'authored' });
+    const params = parseProps(el);
+    actions.push({ ref, name, label: description, risk, provenance: 'authored', ...(params ? { params } : {}) });
     elements.set(ref.id, el);
   }
 

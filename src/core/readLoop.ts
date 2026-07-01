@@ -59,12 +59,18 @@ export async function processCall(
   if (writeKind) {
     const refId = String(call.arguments.ref ?? '');
     const value = name === 'setControl' ? String(call.arguments.value ?? '') : undefined;
+    const rawArgs = call.arguments.args;
+    const args =
+      name === 'invokeAction' && rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs)
+        ? (rawArgs as Record<string, unknown>)
+        : undefined;
     // 复用唯一的写原语（verify-or-refuse + 高危 held 只此一处）。grantedScopes 由调用方
     // 传入：读循环主路共享一个（作用域授权 all 生效）。
     const wr = await executeWrite(host, ledger, confirm, grantedScopes, {
       tool: name as 'setControl' | 'invokeAction',
       refId,
       value,
+      args,
     });
     // 世界模型：验证写即学 (签名, 名) → diff——纯从证据，作为下次同页任务的先验（LLM 仍主导）。
     if (worldModel && wr.verified && wr.evidence && wr.evidence.length > 0) {

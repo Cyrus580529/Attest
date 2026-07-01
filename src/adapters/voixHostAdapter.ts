@@ -33,9 +33,10 @@ export function createVoixHostAdapter(options: VoixHostAdapterOptions = {}): Hos
     return { ok: false, snapshot: current, note: `VOIX 契约无${what}` };
   }
 
-  async function callTool(ref: Ref): Promise<HostResult> {
+  async function callTool(ref: Ref, args?: Record<string, unknown>): Promise<HostResult> {
     const el = elements.get(ref.id) as HTMLElement | undefined;
     if (!el) return { ok: false, snapshot: current, note: `找不到 ${ref.id} 对应的 <tool>` };
+    const detail = args ?? {};
 
     let returned: unknown;
     if (el.hasAttribute('return')) {
@@ -44,10 +45,10 @@ export function createVoixHostAdapter(options: VoixHostAdapterOptions = {}): Hos
         el.addEventListener('return', (e) => resolve((e as CustomEvent).detail), { once: true });
       });
       const timeout = new Promise<unknown>((resolve) => setTimeout(() => resolve(undefined), timeoutMs));
-      el.dispatchEvent(new CustomEvent('call', { detail: {} }));
+      el.dispatchEvent(new CustomEvent('call', { detail }));
       returned = await Promise.race([waitReturn, timeout]);
     } else {
-      el.dispatchEvent(new CustomEvent('call', { detail: {} }));
+      el.dispatchEvent(new CustomEvent('call', { detail }));
       await Promise.resolve(); // 让同步/微任务 handler 落地后再快照
     }
 
@@ -71,8 +72,8 @@ export function createVoixHostAdapter(options: VoixHostAdapterOptions = {}): Hos
     setControl(): Promise<HostResult> {
       return Promise.resolve(notSupported('控件（带参 tool 走 invokeAction+args，后续切片）'));
     },
-    invokeAction(ref: Ref): Promise<HostResult> {
-      return callTool(ref);
+    invokeAction(ref: Ref, args?: Record<string, unknown>): Promise<HostResult> {
+      return callTool(ref, args);
     },
   };
 }

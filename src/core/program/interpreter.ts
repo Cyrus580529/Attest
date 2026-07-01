@@ -73,7 +73,7 @@ export async function* runProgram(
 
   async function* runWrite(
     op: string,
-    req: { tool: 'setControl' | 'invokeAction'; refId: string; value?: string },
+    req: { tool: 'setControl' | 'invokeAction'; refId: string; value?: string; args?: Record<string, unknown> },
     predict?: string[],
   ): AsyncGenerator<AgentStep, Signal> {
     const { steps } = await executeWrite(host, ledger, confirm, grantedScopes, req);
@@ -162,7 +162,11 @@ export async function* runProgram(
       case 'invoke': {
         const action = host.snapshot().actions.find((a) => a.name === node.action);
         if (!action) return yield* fail('invoke', `action 未找到: ${node.action}`);
-        return yield* runWrite('invoke', { tool: 'invokeAction', refId: action.ref.id }, node.predict);
+        return yield* runWrite(
+          'invoke',
+          { tool: 'invokeAction', refId: action.ref.id, args: node.args },
+          node.predict,
+        );
       }
       case 'finish':
         return { finish: node.answer };

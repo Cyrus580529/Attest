@@ -11,6 +11,8 @@ export interface WriteRequest {
   tool: 'setControl' | 'invokeAction';
   refId: string;
   value?: string;
+  /** 带参动作（VOIX 带 <prop> 的 tool）的调用参数。 */
+  args?: Record<string, unknown>;
 }
 
 export interface WriteResult {
@@ -86,7 +88,7 @@ export async function executeWrite(
   const result =
     req.tool === 'setControl'
       ? await host.setControl(res.ref, req.value ?? '')
-      : await host.invokeAction(res.ref);
+      : await host.invokeAction(res.ref, req.args);
   const evidence = diffSnapshots(before, result.snapshot);
   ledger.record({ kind: 'write', tool: req.tool, refId: req.refId, verified: evidence.changed, evidence: evidence.details });
   steps.push({ type: 'action', tool: req.tool, refId: req.refId, verified: evidence.changed, evidence: evidence.details });

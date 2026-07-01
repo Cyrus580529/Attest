@@ -52,7 +52,10 @@ export function serializeSnapshot(s: PageSnapshot, opts: SerializeOptions = {}):
     lines.push(...outlineObjects(s.objects, opts.maxPerType));
   }
   for (const a of s.actions) {
-    lines.push(`action ${a.ref.id}${a.risk === 'high' ? ' [high-risk]' : ''} — ${a.label}`);
+    const params = a.params?.length
+      ? `(${a.params.map((p) => `${p.name}:${p.type}${p.required ? '' : '?'}`).join(', ')})`
+      : '';
+    lines.push(`action ${a.ref.id}${params}${a.risk === 'high' ? ' [high-risk]' : ''} — ${a.label}`);
   }
   for (const c of s.controls) lines.push(`control ${c.ref.id} = ${c.value ?? ''} — ${c.label}`);
   for (const su of s.surfaces) lines.push(`surface ${su.ref.id} — ${su.name}`);

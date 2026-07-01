@@ -21,7 +21,7 @@ export type Node =
   | { op: 'open'; on: string } // "$var"（forEach 绑定）或字面 object ref id
   | { op: 'read'; surface: string } // surface 名
   | { op: 'setControl'; on: { control: string }; value: string; predict?: string[] } // control 名(+可选预测)
-  | { op: 'invoke'; action: string; predict?: string[] } // action 名(+可选预测)
+  | { op: 'invoke'; action: string; predict?: string[]; args?: Record<string, unknown> } // action 名(+可选预测/参数)
   | { op: 'finish'; answer: string };
 
 export interface Program {
@@ -97,6 +97,7 @@ function validateNode(node: unknown, path: string, errors: string[]): void {
     case 'invoke':
       need(typeof node.action === 'string' && node.action.length > 0, '缺 action');
       need(node.predict === undefined || Array.isArray(node.predict), 'predict 必须是数组');
+      need(node.args === undefined || isObject(node.args), 'args 必须是对象');
       break;
     case 'finish':
       need(typeof node.answer === 'string', '缺 answer');

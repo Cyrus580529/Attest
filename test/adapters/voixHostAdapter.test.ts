@@ -44,6 +44,36 @@ describe('createVoixHostAdapter', () => {
     expect(r.note ?? '').toContain('12:00');
   });
 
+  function namePage(): void {
+    document.body.innerHTML =
+      `<tool name="set_name" description="设置名字"><prop name="name" type="string" required></prop></tool>` +
+      `<context name="who">无名</context>`;
+    document.querySelector('[name=set_name]')!.addEventListener('call', (e) => {
+      const { name } = (e as CustomEvent).detail;
+      document.querySelector('context[name=who]')!.textContent = `名字=${name}`;
+    });
+  }
+
+  it('带参 tool：invokeAction 带 args → call 事件 detail 收到参数，改状态可 verify', async () => {
+    namePage();
+    const host = createVoixHostAdapter({ getUrl: () => '/app' });
+    const action = host.snapshot().actions[0]!;
+    const r = await host.invokeAction(action.ref, { name: 'Alice' });
+    expect(r.snapshot.surfaces[0]!.text).toBe('名字=Alice');
+  });
+
+  it('端到端带参：模型 invokeAction 传 args → verify + completed', async () => {
+    namePage();
+    const host = createVoixHostAdapter({ getUrl: () => '/app' });
+    const llm = new FakeLlmAdapter([
+      toolCallTurn('invokeAction', { ref: 'action:set_name', args: { name: 'Bob' } }),
+      toolCallTurn('finish', { answer: '已设为 Bob' }),
+    ]);
+    const steps = await collect(createAgent({ llm, host }).run('把名字设为 Bob'));
+    expect(steps.some((s) => s.type === 'action' && s.verified)).toBe(true);
+    expect(host.snapshot().surfaces[0]!.text).toBe('名字=Bob');
+  });
+
   it('端到端：Attest 驱动 VOIX 页 + verify + 诚实 outcome（VOIX 自己给不了的保证）', async () => {
     voixPage();
     const host = createVoixHostAdapter({ getUrl: () => '/app' });

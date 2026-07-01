@@ -12,5 +12,6 @@ export interface HostAdapter {
   openObject(ref: Ref): Promise<HostResult>;
   navigate(ref: Ref): Promise<HostResult>;
   setControl(ref: Ref, value: string): Promise<HostResult>;
-  invokeAction(ref: Ref): Promise<HostResult>;
+  /** args：带参动作（如 VOIX 带 <prop> 的 tool）的调用参数；无参动作可省略。 */
+  invokeAction(ref: Ref, args?: Record<string, unknown>): Promise<HostResult>;
 }

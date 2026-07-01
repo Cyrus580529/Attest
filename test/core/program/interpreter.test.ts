@@ -3,6 +3,7 @@ import { parseContract } from '../../../src/contract/parseContract';
 import { FakeHostAdapter } from '../../../src/testing/fakeHostAdapter';
 import { Ledger, computeOutcome } from '../../../src/honesty/ledger';
 import { runProgram } from '../../../src/core/program/interpreter';
+import { createVoixHostAdapter } from '../../../src/adapters/voixHostAdapter';
 import type { Program } from '../../../src/core/program/types';
 import type { AgentStep } from '../../../src/core/loop';
 import type { ConfirmFn } from '../../../src/honesty/types';
@@ -83,6 +84,21 @@ describe('ProgramInterpreter', () => {
     const { steps } = await drain(runProgram(program, { host, ledger: new Ledger(), confirm: APPROVE_ONCE }));
     expect(steps.some((s) => s.type === 'speculate' && s.hit)).toBe(true);
     expect(steps.some((s) => s.type === 'mispredict')).toBe(false);
+  });
+
+  it('程序模式 invoke 节点带 args → 传参给 VOIX 带参 tool', async () => {
+    document.body.innerHTML =
+      `<tool name="set_name" description="设名"><prop name="name" type="string" required></prop></tool>` +
+      `<context name="who">无名</context>`;
+    document.querySelector('[name=set_name]')!.addEventListener('call', (e) => {
+      document.querySelector('context[name=who]')!.textContent = `名字=${(e as CustomEvent).detail.name}`;
+    });
+    const host = createVoixHostAdapter({ getUrl: () => '/app' });
+    const program: Program = {
+      body: [{ op: 'invoke', action: 'set_name', args: { name: 'Carol' } }, { op: 'finish', answer: 'ok' }],
+    };
+    await drain(runProgram(program, { host, ledger: new Ledger(), confirm: APPROVE_ONCE }));
+    expect(host.snapshot().surfaces[0]!.text).toBe('名字=Carol');
   });
 
   it('open 按描述/label 解析对象（不止 ref-id）', async () => {

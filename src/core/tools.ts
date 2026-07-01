@@ -60,7 +60,20 @@ export const WRITE_TOOLS: ToolSchema[] = [
       additionalProperties: false,
     },
   },
-  { name: 'invokeAction', description: '触发一个动作（高危需确认）。', parameters: refParam('action 的 ref id') },
+  {
+    name: 'invokeAction',
+    description: '触发一个动作（高危需确认）。若该动作声明了参数，用 args 传入。',
+    parameters: {
+      type: 'object',
+      properties: {
+        ref: { type: 'string', description: 'action 的 ref id' },
+        args: { type: 'object', description: '动作参数（仅当该动作声明了参数时）', additionalProperties: true },
+        predict: PREDICT_PARAM,
+      },
+      required: ['ref'],
+      additionalProperties: false,
+    },
+  },
 ];
 
 export const WRITE_REF_KINDS: Record<string, RefKind> = {
@@ -77,7 +90,7 @@ export const RUN_PROGRAM_TOOL: ToolSchema = {
     '一次性提交一段程序（JSON AST）来完成多步/写操作。program = { body: Node[] }；' +
     'Node.op ∈ observe/forEach/if/open/read/setControl/invoke/finish。' +
     'forEach{query:{type?,labelContains?},as,do}; if{cond:{surface,contains},then,else?}; ' +
-    'open{on:"$var"}; read{surface}; setControl{on:{control},value}; invoke{action}; finish{answer}。' +
+    'open{on:"$var"}; read{surface}; setControl{on:{control},value}; invoke{action,args?}; finish{answer}。' +
     'invoke/setControl 可选带 predict:string[]（对执行后可观察变化的预期，如 "control:c: 0 → 5"、"url: /a → /b"）——' +
     '仅用于加速校验，猜错不影响结果、也不算失败。' +
     '只能引用页面真实暴露的对象/动作/控件/区域名；高危动作会暂停等确认。',

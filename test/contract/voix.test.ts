@@ -40,6 +40,24 @@ describe('parseVoix（骑 VOIX 契约：<tool>/<context> → PageSnapshot）', (
     expect(snap.surfaces[0]!.name).toBe('context');
   });
 
+  it('<prop> 子元素 → action.params（name/type/required/description）', () => {
+    const snap = build(
+      `<tool name="create_task" description="创建任务">` +
+        `<prop name="title" type="string" description="标题" required></prop>` +
+        `<prop name="priority" type="number"></prop>` +
+        `</tool>`,
+    );
+    expect(snap.actions[0]!.params).toEqual([
+      { name: 'title', type: 'string', description: '标题', required: true },
+      { name: 'priority', type: 'number', required: false },
+    ]);
+  });
+
+  it('无 <prop> 的 tool → params 省略（undefined）', () => {
+    const snap = build(`<tool name="save" description="保存"></tool>`);
+    expect(snap.actions[0]!.params).toBeUndefined();
+  });
+
   it('parseVoix 符合 ContractSource 签名（可插拔）', () => {
     const src: ContractSource = parseVoix;
     const snap = src(document.body, '/x');

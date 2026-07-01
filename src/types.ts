@@ -19,12 +19,22 @@ export interface ObjectNode {
   readonly provenance?: Provenance;
 }
 
+/** 动作参数（如 VOIX <prop>）：带类型的输入声明。 */
+export interface ParamSpec {
+  readonly name: string;
+  readonly type: 'string' | 'number' | 'boolean';
+  readonly description?: string;
+  readonly required?: boolean;
+}
+
 export interface ActionNode {
   readonly ref: Ref; // kind: 'action'
   readonly name: string; // 如 "apply"
   readonly label: string;
   readonly risk: Risk;
   readonly provenance?: Provenance;
+  /** 可选：调用时需要的参数（VOIX 带参 tool）。无参动作省略。 */
+  readonly params?: readonly ParamSpec[];
 }
 
 export interface ControlNode {
