@@ -61,3 +61,6 @@ export type { Intent, Evidence, LedgerEntry, Outcome, ConfirmFn } from './honest
 // ── 测试双适配器（供库使用者写测试）──
 export { FakeLlmAdapter, toolCallTurn, textTurn } from './testing/fakeLlmAdapter';
 export { FakeHostAdapter } from './testing/fakeHostAdapter';
+// ── 集成方工具：自定义 HostAdapter 的合规检查器（见 docs/integrating.md）──
+export { checkHostContract } from './testing/hostChecks';
+export type { HostCheckResult, HostCheckOptions } from './testing/hostChecks';

@@ -177,6 +177,21 @@ for await (const step of agent.run('add a task called "ship README", then show m
 > `happy-dom`, a real browser via `createBrowserHostAdapter` (Playwright), or the built-in
 > `FakeHostAdapter` for tests.
 
+## Bring your own host / contract / LLM
+
+Everything page- or provider-specific plugs in through three seams: `HostAdapter` (page
+driver), `ContractSource` (capability format — VOIX and `data-agent-*` are just the two
+built-ins), and `LlmAdapter`. **[docs/integrating.md](docs/integrating.md)** states the
+invariants your implementation must honor (snapshots repeatable, effects — including
+failures — observable) and ships a conformance checker you can run in your test suite:
+
+```ts
+import { checkHostContract } from 'attest-agent';
+expect((await checkHostContract(myHost)).filter(r => !r.pass)).toEqual([]);
+```
+
+The same doc carries the **pre-1.0 API stability tiers** (Stable / Settling / Internal).
+
 ## Making a page agent-friendly
 
 **VOIX** (recommended — an existing standard):
