@@ -1,103 +1,168 @@
 # Attest
 
-> 可信、自证的网页 agent 内核。模型只**提议**动作，harness 校验页面真实暴露的 `ref` 后才执行；每个执行型动作都留下可验证证据，**留不出证据就不准声称成功**。
+> **Trustworthy, self-verifying web agent core.** The model only *proposes* actions;
+> the harness validates every `ref` against what the page really exposes before executing.
+> Each executed action leaves auditable evidence — and **the agent may not claim success
+> without it.**
 
-不是又一个"抓取 DOM 操作任意网站"的 agent。Attest 走相反的赌注：让页面通过 `data-agent-*` 契约**主动配合** agent，换取**可靠、安全、可审计、可长程自主**的执行。
+Attest is **not** another "scrape the DOM and click anything" agent. It makes the opposite
+bet: pages *cooperate* with the agent through a contract, and in exchange the agent becomes
+**reliable, safe, auditable, and capable of long-horizon autonomy**.
 
-- **ref 绑定 + harness 校验**：模型给的 ref 必须命中页面真实暴露的对象，否则不执行（根除幻觉动作）。
-- **verify-or-refuse**：执行后采集可观察变化作证据；终答的 `outcome` 由证据账本计算（`completed`/`failed`/`cancelled`），**不信模型自述**。
-- **高危 held**：提交/兑换/审批等高风险动作先暂停等确认（Intent Receipt），默认拒绝。
-- **页面记忆**：走通一次的轨迹按"页面形状 + 目标"记下，下次同类**零-LLM 重放**；verifier 兜底，记忆失效自动回退 LLM。
+The result is an agent that **cannot lie about what it did.** Its final `outcome`
+(`completed` / `failed` / `cancelled`) is *computed from an evidence ledger*, never taken
+from the model's own narration.
 
-provider 无关，默认 OpenAI 兼容（DeepSeek / kamiapi / 任意兼容端点均可）。
+- **Ref-binding + harness validation** — a `ref` the model emits must resolve to a real
+  object the page exposes, or the action is refused. No guessed selectors, no hallucinated
+  actions.
+- **Verify-or-refuse** — after every write, the harness diffs the page snapshot; the
+  observable change *is* the evidence. No evidence → the write did not "succeed".
+- **High-risk held** — submit / checkout / approve and other dangerous actions pause for an
+  explicit Intent Receipt first. Default is deny.
+- **Lookahead + priors, not blind replay** — the model plans several steps ahead and may
+  predict their effects; a `WorldModel` and `RecipeBook` feed *priors* learned from past
+  evidence into its context. The verifier is always the single source of truth — priors only
+  make the model plan faster, they never bypass it.
+
+Provider-agnostic; defaults to any OpenAI-compatible endpoint (DeepSeek, OpenAI, or any
+compatible gateway).
 
 ---
 
-## 安装
+## Rides the VOIX standard
+
+Attest builds on **[VOIX](https://arxiv.org/abs/2511.11287)** — the standard where a page
+declares agent-callable tools with `<tool>` / `<prop>` / `<context>` elements. Attest is the
+**trust layer** on top: it supplies exactly the three things the VOIX paper says it does *not*
+do — **outcome verification, trust, and drift detection**.
+
+The trust core runs on a normalized `PageSnapshot`, so the contract format is pluggable
+(`ContractSource`): `parseVoix` for VOIX pages, `parseContract` for native `data-agent-*`
+pages. Any page that implements either — with **zero extra code** — can be read, referenced,
+planned over, and driven.
+
+---
+
+## Install
+
+Not on npm yet. Clone and build:
 
 ```bash
+git clone <this repo> && cd attest
 npm install
+npm run build
 ```
 
-## 跑测试（看它真的成立）
+(Once published, `npm install attest-agent` and the imports below will work as-is.)
+
+## Prove it holds (no network / key needed)
 
 ```bash
-npm test          # 85 个确定性测试（FakeLlm + FakeHost，无需联网/key）
+npm test          # 186 deterministic tests (FakeLlm + FakeHost)
 npm run typecheck
-npm run build     # 产出 dist/
+npm run build     # emits dist/
 ```
 
-## 跑真实 LLM（playground）
+## Run against a real LLM
 
-`test/live/playground.live.test.ts` 用真实模型在示范页 `examples/mini-board` 上跑三场景：长程读取、高危 held、零-LLM 记忆重放。**没设 key 时自动跳过。**
-
-PowerShell：
+Two non-interactive live scripts drive real models over a demo page and print every step —
+`observe / action(verified) / held / cancelled / FINISH[outcome]` plus the evidence ledger.
+They use Node's native `fetch` to bypass happy-dom's CORS.
 
 ```powershell
-$env:ATTEST_API_KEY="<你的key>"
-$env:ATTEST_BASE_URL="https://www.kamiapi.top/v1"   # OpenAI 兼容端点；OpenAI 官方则用 https://api.openai.com/v1
-$env:ATTEST_MODEL="gpt-5.5"                          # 任意支持 function-calling 的模型
-npx vitest run test/live
+$env:ATTEST_API_KEY="<your key>"
+$env:ATTEST_BASE_URL="https://api.deepseek.com"   # any OpenAI-compatible endpoint
+$env:ATTEST_MODEL="deepseek-v4-pro"               # any function-calling model
+
+npx tsx examples/live-voix.ts     # VOIX page: typed args, verified writes, high-risk held
+npx tsx examples/live-check.ts    # data-agent-* board: long-horizon read, held, priors
 ```
 
-终端会打印每一步：`observe / action(verified) / held / ⚡replay / FINISH[outcome]` 以及证据账本。
+See `docs/LIVE-ACCEPTANCE.md` for the full real-model acceptance checklist.
 
 ---
 
-## 在你自己的代码里用
+## Use it in your own code
 
 ```ts
-import { createAgent, createDomHostAdapter, createOpenAiAdapter, PageMemory } from 'attest-agent';
+import {
+  createAgent,
+  createVoixHostAdapter,   // drives a live VOIX page (<tool>/<context> + call events)
+  createOpenAiAdapter,
+  WorldModel,              // optional: priors learned from verified writes
+  RecipeBook,              // optional: successful-program priors (code-as-action)
+} from 'attest-agent';
 
 const agent = createAgent({
   llm: createOpenAiAdapter({
     apiKey: process.env.ATTEST_API_KEY!,
-    baseUrl: 'https://www.kamiapi.top/v1', // 可选，默认 OpenAI 官方
-    model: 'gpt-5.5',
+    baseUrl: 'https://api.deepseek.com', // optional; defaults to OpenAI
+    model: 'deepseek-v4-pro',
   }),
-  host: createDomHostAdapter(),            // 浏览器里读 document 的 data-agent-* 契约
-  memory: new PageMemory(),                // 可选：开启页面记忆
-  confirm: async (intent) => ({            // 高危动作确认；默认拒绝
-    approved: window.confirm(`确认执行「${intent.label}」？`),
+  host: createVoixHostAdapter(),         // or createDomHostAdapter() for data-agent-* pages
+  worldModel: new WorldModel(),          // optional prior injection
+  confirm: async (intent) => ({          // high-risk gate; default is deny
+    approved: window.confirm(`Run "${intent.label}"?`),
+    // scope: 'all' authorizes same-named actions for the rest of this run (each still verified)
   }),
 });
 
-for await (const step of agent.run('看看有哪些工单，挑一个看详情后告诉我')) {
-  console.log(step); // observation / action / held / replay / finish ...
+for await (const step of agent.run('add a task called "ship README", then show me the list')) {
+  console.log(step); // thinking / plan / observation / action / held / cancelled / finish ...
   if (step.type === 'finish') {
-    console.log('结论：', step.answer, '| 状态：', step.outcome);
-    console.log('证据账本：', step.ledger);
+    console.log('answer:', step.answer, '| outcome:', step.outcome);
+    console.log('evidence ledger:', step.ledger); // outcome was computed from this
   }
 }
 ```
 
-> `createDomHostAdapter` 需要浏览器 DOM。Node 环境可用 `happy-dom` 提供 `document`，或用内置的 `FakeHostAdapter` 写测试。
+> Host adapters need a DOM. In the browser they read `document` directly; in Node use
+> `happy-dom`, a real browser via `createBrowserHostAdapter` (Playwright), or the built-in
+> `FakeHostAdapter` for tests.
 
-## 页面怎么"对 agent 友好"（契约）
+## Making a page agent-friendly
 
-页面用 DOM 属性声明可操作对象，内核读取紧凑语义快照而非生 DOM：
+**VOIX** (recommended — an existing standard):
 
 ```html
-<li data-agent-object="ticket:101">登录页 500 错误</li>   <!-- 可引用/打开的对象 type:id -->
-<button data-agent-action="open">打开</button>             <!-- 可触发的动作 -->
-<button data-agent-action="resolve" data-agent-risk="high">标记已解决</button>  <!-- 高危=先 held -->
-<input data-agent-control="note" />                        <!-- 可读写控件 -->
-<section data-agent-surface="detail">…</section>           <!-- 可读取的区域 -->
+<tool name="add_task" description="Add a task">
+  <prop name="title" type="string" description="Task title" required></prop>
+</tool>
+<tool name="clear_all" description="Delete all tasks"></tool>          <!-- mark high-risk in your handler -->
+<context name="tasks">Current tasks: (empty)</context>
 ```
 
-实现了这套契约的**任何新页面**，零额外代码即可被 Attest 读取、引用、规划、执行。
+**Native `data-agent-*`** (also supported):
 
-## 核心概念
+```html
+<li data-agent-object="ticket:101">Login page 500 error</li>          <!-- referenceable object type:id -->
+<button data-agent-action="open">Open</button>                        <!-- triggerable action -->
+<button data-agent-action="resolve" data-agent-risk="high">Resolve</button>  <!-- high-risk = held -->
+<input data-agent-control="note" />                                   <!-- readable/writable control -->
+<section data-agent-surface="detail">…</section>                      <!-- readable region -->
+```
 
-| 概念 | 作用 |
-|------|------|
-| `PageSnapshot` | 由 `data-agent-*` 解析出的对象/动作/控件/区域 + 稳定 `ref` |
-| `refResolver` | 校验 ref 真实存在且 kind 匹配，非法即 error |
-| `verifier` | 写动作后对比前后快照，可观察变化即证据 |
-| `Ledger` | append-only 证据账本（observe/intent/grant/write） |
-| `narrationGuard` | 由账本计算 `outcome`，禁止把失败/取消叙述成成功 |
-| `PageMemory` | 轨迹记忆 + 零-LLM 重放 + 失效回退（verifier 兜底） |
+Either way, a **new page** that implements the contract is drivable with **no extra code**.
 
-## 状态
+## Core concepts
 
-v1 核心完整（契约 / 读循环 / 诚实层 / 长程 + 引用 / 页面记忆），85 测试全绿。真实 LLM 端到端验收清单见 `docs/LIVE-ACCEPTANCE.md`。
+| Concept | Role |
+|---------|------|
+| `parseVoix` / `parseContract` | Turn a page (VOIX or `data-agent-*`) into a `PageSnapshot`: objects / actions / controls / surfaces + stable `ref`s |
+| `refResolver` | Verifies a `ref` exists and its kind matches; anything else is an `error`, never executed |
+| `verifier` | Diffs the snapshot after a write — the observable change is the evidence |
+| `Ledger` | Append-only evidence log (observe / intent / grant / write) |
+| `narrationGuard` | Computes `outcome` from the ledger; forbids narrating a failure or cancellation as success |
+| `WorldModel` / `RecipeBook` | Opt-in priors — learned (action → diff) and successful programs — injected into context to plan faster; never bypass the verifier |
+
+## Status
+
+Core is complete — contract layer (VOIX + native), single tool-calling read loop with
+lookahead, honesty layer (verifier + ledger + narration guard + high-risk held), long-horizon
++ references, code-as-action with recipe priors, world-model priors, and cross-session
+persistence (`toJSON` / `fromJSON`). **186 deterministic tests green**, and live-accepted
+against a real model (`deepseek-v4-pro`). Design notes and the live-acceptance checklist live
+in `docs/`.
+
+License: MIT.

@@ -1,4 +1,4 @@
-// ── 契约层：实现 data-agent-* 的页面零额外代码即可被驱动 ──
+// ── 契约层：实现契约（VOIX 或 data-agent-*）的页面零额外代码即可被驱动 ──
 export type {
   Ref,
   RefKind,
