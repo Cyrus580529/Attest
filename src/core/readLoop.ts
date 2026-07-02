@@ -161,6 +161,7 @@ export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGe
     messages.push({ role: 'assistant', content: turn.content, toolCalls: turn.toolCalls });
 
     let finished = false;
+    const responded = new Set<string>();
     for (const call of turn.toolCalls) {
       if (call.name === 'finish') {
         yield finishStep(String(call.arguments.answer ?? '').trim(), ledger);
@@ -170,6 +171,7 @@ export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGe
       const result = await processCall(call, host, ledger, confirm, grantedScopes, worldModel);
       for (const s of result.steps) yield s;
       messages.push({ role: 'tool', toolCallId: call.id, content: result.toolResult });
+      responded.add(call.id);
 
       // lookahead：模型可在一回合内提多步并给 predict。写步命中预测则继续执行本回合后续步；
       // 落空/未验证/error/取消 → 中断本轮批次，回到 llm.step 让模型按真实结果重规划（模型始终主导）。
@@ -202,6 +204,17 @@ export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGe
       }
     }
     if (finished) return;
+    // OpenAI 协议合同：assistant 的每个 tool_call 都必须有对应 tool 回执。
+    // 批次中断（落空/未验证/错误/取消）跳过的步骤补"未执行"回执，否则下一轮请求 400。
+    for (const call of turn.toolCalls) {
+      if (!responded.has(call.id)) {
+        messages.push({
+          role: 'tool',
+          toolCallId: call.id,
+          content: 'SKIPPED: 本回合批次已中断，此步未执行。请按最新工具结果重规划。',
+        });
+      }
+    }
   }
 
   const guarded = guardFinish('我没能在限定步数内完成这个任务，没有可确认的结果。', ledger.entries);
