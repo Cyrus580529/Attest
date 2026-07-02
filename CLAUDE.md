@@ -83,6 +83,8 @@ npx vitest run test/live   # 脚本化 live 场景
 
 **切片17 叙述原则化（2026-07-02）**（已 ship，确定性 240 绿，**真模型 live 通过**（live-goalmet 3 场景 + live-check S2/S3 回归 + live-suite：narration 自然不复述统计、"仅读取了页面"记录行正确、facts 与 narration 并列对照如设计））：开放线4 兑现，把 verify-or-refuse 推广到叙述层。finish step 拆 `facts`（账本硬生成：verified/unverified/cancelled/writeErrors 明细 + summary 骨架）+ `narration`（模型原话）+ `answer`（兼容拼接）。**红线3 从"守卫"升级为"生成"**：outcome 计算逻辑一行未动，变的只是谁陈述事实。**用户定调的自由度原则**：narration 一字不改不审查不重写；prompt 告知不禁令（"系统会附执行记录，不必复述统计"）；机制=并列对照非消音——模型说错了，旁边的事实块自动拆穿。guardFinish 退役（caveat 成为 facts.summary 常规组成），narrationGuard 缩为 `applyClaim`（goalMet 只降不升）；facts 即未来可视 demo 证据面板的数据源。设计 `docs/specs/2026-07-02-attest-slice17-principled-narration-design.md`。
 
+**可视 demo（2026-07-02，已 ship + Playwright E2E 真模型验收两场景过）**：`examples/demo-web`，`npm run demo`（需 `ATTEST_API_KEY`；key 只活在 vite dev server，`/api` 代理注入，不进浏览器）。左半屏契约活看板（agent 驱动的就是用户看见的 DOM），右半屏证据记录仪（AgentStep 实时时间线、held 意向回执 y/a/N、收尾卡 narration/facts 分区并列+outcome 橡皮章、WorldModel 存 localStorage）。验收即卖点镜头：归档被业务拒绝→FAILED 章 + FACTS 同屏记"成功执行并验证 1 个动作"。E2E 抓到并修掉 `.veil{display:flex}` 覆盖 `[hidden]` 的遮罩拦截 bug。
+
 **真模型验收脚本**：`examples/live-check.ts`（玩具看板 S1/S2/S3）、`examples/live-real.ts`（真实工作台 T1-T4）、`examples/live-pages.ts`（导航/分页/嵌套）、`examples/live-suite.ts`（对抗 A1-A7）、`examples/live-drift.ts`（漂移）、`examples/live-goalmet.ts`（业务失败自评降级）、`examples/live-bench.ts`（先验 A/B）。绕 happy-dom CORS 用原生 fetch；vitest 的 `test/live` 在 happy-dom 下会撞 CORS，真验收走这两个脚本。
 
 **开放线（优先级序）**：
