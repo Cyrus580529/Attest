@@ -4,6 +4,7 @@
 // 派发 `return` 事件回传结果。<prop> 声明参数（本刀先不接参数，留待下一刀动 invokeAction 签名）。
 import type { ActionNode, ParamSpec, PageSnapshot, Risk, SurfaceNode } from '../types';
 import { RefMinter } from './refs';
+import { collectScopes, queryAllDeep } from './queryAllDeep';
 
 const PROP_TYPES = new Set(['string', 'number', 'boolean']);
 
@@ -38,9 +39,10 @@ export interface VoixParseResult {
 function parse(root: ParentNode, url: string): VoixParseResult {
   const minter = new RefMinter();
   const elements = new Map<string, Element>();
+  const scopes = collectScopes(root);
 
   const actions: ActionNode[] = [];
-  for (const el of root.querySelectorAll('tool')) {
+  for (const el of queryAllDeep(root, 'tool', scopes)) {
     const name = clean(el.getAttribute('name'));
     if (!name) continue; // 无 name 无从引用，跳过
     const description = clean(el.getAttribute('description')) || name;
@@ -53,7 +55,7 @@ function parse(root: ParentNode, url: string): VoixParseResult {
   }
 
   const surfaces: SurfaceNode[] = [];
-  for (const el of root.querySelectorAll('context')) {
+  for (const el of queryAllDeep(root, 'context', scopes)) {
     const name = clean(el.getAttribute('name')) || 'context';
     const ref = minter.mint('surface', name);
     surfaces.push({ ref, name, text: clean(el.textContent), provenance: 'authored' });

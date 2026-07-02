@@ -3,6 +3,7 @@
 // 推断的 handle 来源 = inferred（与 parseContract 的 authored 区分）；这里先用文本启发式给动作定风险（保守：危险动词→high）。
 import type { ActionNode, ControlNode, ObjectNode, PageSnapshot, Risk, SurfaceNode } from '../types';
 import { RefMinter } from './refs';
+import { collectScopes, queryAllDeep } from './queryAllDeep';
 
 const HIGH_RISK = /delete|remove|destroy|删除|删|清空|移除|pay|支付|purchase|checkout|confirm|确认|submit|提交|发送|send/i;
 
@@ -23,6 +24,7 @@ export interface InferResult {
 }
 
 export function inferContract(root: ParentNode, url: string): InferResult {
+  const scopes = collectScopes(root);
   const minter = new RefMinter();
   const elements = new Map<string, Element>();
   const objects: ObjectNode[] = [];
@@ -32,7 +34,7 @@ export function inferContract(root: ParentNode, url: string): InferResult {
 
   // 对象：列表项 / 文章 / 卡片 / 行
   let oi = 0;
-  for (const el of root.querySelectorAll('li, [role="listitem"], article, [role="article"], [role="row"]')) {
+  for (const el of queryAllDeep(root, 'li, [role="listitem"], article, [role="article"], [role="row"]', scopes)) {
     const label = clean(el.textContent);
     if (!label) continue;
     oi += 1;
@@ -42,7 +44,7 @@ export function inferContract(root: ParentNode, url: string): InferResult {
   }
 
   // 动作：按钮 / role=button / submit / 链接
-  for (const el of root.querySelectorAll('button, [role="button"], input[type="submit"], input[type="button"], a[href]')) {
+  for (const el of queryAllDeep(root, 'button, [role="button"], input[type="submit"], input[type="button"], a[href]', scopes)) {
     const label = clean(el.textContent) || clean(el.getAttribute('aria-label')) || clean((el as HTMLInputElement).value);
     if (!label) continue;
     const risk: Risk = HIGH_RISK.test(label) ? 'high' : 'low';
@@ -52,7 +54,7 @@ export function inferContract(root: ParentNode, url: string): InferResult {
   }
 
   // 控件：表单输入（input/select/textarea，排除按钮型 input）
-  for (const el of root.querySelectorAll('input:not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"]), select, textarea')) {
+  for (const el of queryAllDeep(root, 'input:not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"]), select, textarea', scopes)) {
     const name =
       clean(el.getAttribute('aria-label')) ||
       labelFor(root, el) ||
@@ -66,7 +68,7 @@ export function inferContract(root: ParentNode, url: string): InferResult {
   }
 
   // surface：语义区域 / 状态 / 输出
-  for (const el of root.querySelectorAll('[role="region"], [role="status"], [role="alert"], output, section[aria-label]')) {
+  for (const el of queryAllDeep(root, '[role="region"], [role="status"], [role="alert"], output, section[aria-label]', scopes)) {
     const name = clean(el.getAttribute('aria-label')) || clean(el.getAttribute('role')) || 'region';
     const ref = minter.mint('surface', name);
     surfaces.push({ ref, name, text: clean(el.textContent), provenance: 'inferred' });
