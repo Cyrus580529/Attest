@@ -5,6 +5,7 @@ import { Ledger } from '../../src/honesty/ledger';
 import { executeWrite } from '../../src/core/execWrite';
 import { inferContract } from '../../src/contract/inferContract';
 import type { ConfirmFn } from '../../src/honesty/types';
+import type { HostAdapter } from '../../src/host/types';
 
 beforeEach(() => {
   document.body.innerHTML = '';
@@ -33,7 +34,7 @@ describe('executeWrite', () => {
     expect(ledger.entries.some((e) => e.kind === 'write' && e.verified)).toBe(true);
   });
 
-  it('写后无可观察变化 → verified false', async () => {
+  it('写后无可观察变化 → verified false，且提示"未验证≠失败，勿盲目重试"', async () => {
     const before = makeSnap(`<input data-agent-control="qty" value="0"/>`);
     const host = new FakeHostAdapter(before); // 无 transition → 快照不变
     const r = await executeWrite(host, new Ledger(), DENY, new Set(), {
@@ -42,6 +43,34 @@ describe('executeWrite', () => {
       value: '0',
     });
     expect(r.verified).toBe(false);
+    // 未验证 ≠ 失败。不给这个引导，模型的理性反应是重试 → 同一个写打两遍（重复副作用）。
+    expect(r.toolResult).toContain('不要');
+    expect(r.toolResult).toContain('重试');
+  });
+
+  it('效果异步落地（写返回后才渲染）→ settle 重照仍能验证，不误报未验证', async () => {
+    const before = makeSnap(`<button data-agent-action="add">A</button>`);
+    const after = makeSnap(
+      `<button data-agent-action="add">A</button><div data-agent-object="task:9">t9</div>`,
+    );
+    let current = before;
+    const host: HostAdapter = {
+      snapshot: () => current,
+      readSurface: () => '',
+      openObject: () => Promise.resolve({ ok: true, snapshot: current }),
+      navigate: () => Promise.resolve({ ok: true, snapshot: current }),
+      setControl: () => Promise.resolve({ ok: true, snapshot: current }),
+      invokeAction: () => {
+        setTimeout(() => (current = after), 10); // 页面 handler 异步渲染，效果 10ms 后才可见
+        return Promise.resolve({ ok: true, snapshot: current }); // 返回时快照还是旧的
+      },
+    };
+    const r = await executeWrite(host, new Ledger(), DENY, new Set(), {
+      tool: 'invokeAction',
+      refId: 'action:add',
+    });
+    expect(r.verified).toBe(true);
+    expect(r.evidence!.some((d) => d.includes('task:9'))).toBe(true);
   });
 
   it('高危 invoke 默认拒绝 → cancelled，无 write 记账', async () => {

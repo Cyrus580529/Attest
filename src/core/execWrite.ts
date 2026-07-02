@@ -29,12 +29,18 @@ export interface WriteResult {
  * 共享写原语：resolve → 高危 held（含作用域授权）→ host 调用 → diffSnapshots 验证 → 记账。
  * 读循环、程序解释器都复用它，信任不变量（只引用真实 ref / verify-or-refuse / 高危 held）只此一处。
  */
+export interface WriteExecOptions {
+  /** 验证 settle 的退避间隔（毫秒）：写后无变化时按此序列重照再 diff。测试可传 [] 关闭。 */
+  settleDelaysMs?: number[];
+}
+
 export async function executeWrite(
   host: HostAdapter,
   ledger: Ledger,
   confirm: ConfirmFn,
   grantedScopes: Set<string>,
   req: WriteRequest,
+  opts: WriteExecOptions = {},
 ): Promise<WriteResult> {
   const before = host.snapshot();
   const writeKind: RefKind = req.tool === 'setControl' ? 'control' : 'action';
@@ -108,13 +114,20 @@ export async function executeWrite(
     req.tool === 'setControl'
       ? await host.setControl(target, req.value ?? '')
       : await host.invokeAction(target, req.args);
-  const evidence = diffSnapshots(preExec, result.snapshot);
+  let evidence = diffSnapshots(preExec, result.snapshot);
+  // settle：页面 handler 可能异步渲染（网络/setTimeout），写返回一瞬的快照看不到效果。
+  // 无变化时有界退避重照再 diff，减少假"未验证"——它会诱导模型重试造成重复副作用。
+  for (const delay of opts.settleDelaysMs ?? [25, 75]) {
+    if (evidence.changed) break;
+    await new Promise((r) => setTimeout(r, delay));
+    evidence = diffSnapshots(preExec, host.snapshot());
+  }
   ledger.record({ kind: 'write', tool: req.tool, refId: req.refId, verified: evidence.changed, evidence: evidence.details });
   steps.push({ type: 'action', tool: req.tool, refId: req.refId, verified: evidence.changed, evidence: evidence.details });
 
   const base = evidence.changed
     ? `done; 证据: ${evidence.details.join('; ')}`
-    : '已执行，但未检测到可观察变化（未验证）。';
+    : '已执行，但未检测到可观察变化（未验证）。注意：未验证不等于失败——不要盲目重试同一写操作（可能造成重复副作用），先读取页面确认实际状态。';
   const toolResult = confirmed ? `（此高风险操作已由用户确认后才执行）${base}` : base;
   return { steps, toolResult, verified: evidence.changed, ref: target, evidence: evidence.details };
 }
