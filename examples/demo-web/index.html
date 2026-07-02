@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Attest — 证据在场，方为完成</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header class="masthead">
+    <div class="brand">
+      <span class="brand-mark">✓̲</span>
+      <h1>Attest</h1>
+      <span class="brand-tag">证据在场，方为完成</span>
+    </div>
+    <div class="masthead-note">左边是世界 · 右边是记录仪 —— outcome 由证据账本裁决，不信模型自述</div>
+  </header>
+
+  <main class="stage">
+    <!-- ══ 左：真实工作台（agent 驱动的就是这块 DOM）══ -->
+    <section class="workbench" id="workbench" aria-label="工单工作台">
+      <div class="bench-head">
+        <h2>工单工作台</h2>
+        <p class="bench-sub">这是一张实现 <code>data-agent-*</code> 契约的活页面</p>
+      </div>
+
+      <ul class="tickets" id="ticket-list"></ul>
+
+      <section class="surface-card" data-agent-surface="detail" id="detail">选择一个工单查看详情。</section>
+      <section class="surface-strip" data-agent-surface="status" id="status">就绪。</section>
+
+      <div class="bench-actions">
+        <button data-agent-action="resolve" data-agent-risk="high" id="btn-resolve">解决当前工单</button>
+        <button data-agent-action="archive" id="btn-archive">归档看板</button>
+        <button data-agent-action="clear_all" data-agent-risk="high" id="btn-clear" class="danger">清空全部</button>
+      </div>
+    </section>
+
+    <!-- ══ 右：证据记录仪 ══ -->
+    <section class="recorder" aria-label="证据面板">
+      <div class="recorder-head">
+        <h2>EVIDENCE RECORDER</h2>
+        <span class="recorder-dot" id="live-dot"></span>
+      </div>
+      <ol class="tape" id="tape">
+        <li class="tape-hint">在下方输入任务。agent 的每一步——观察、写入、验证证据、高危拦截——都会逐条落在这里。</li>
+      </ol>
+      <form class="ask" id="ask-form">
+        <input id="ask-input" type="text" placeholder="例：把所有未解决的工单标记为已解决" autocomplete="off" />
+        <button type="submit" id="ask-btn">执行</button>
+      </form>
+    </section>
+  </main>
+
+  <!-- held 确认：意向回执 -->
+  <div class="veil" id="veil" hidden>
+    <div class="receipt" role="dialog" aria-modal="true">
+      <div class="receipt-head">意向回执 · INTENT RECEIPT</div>
+      <p class="receipt-label" id="receipt-label"></p>
+      <p class="receipt-note">高风险动作默认拒绝。批准后执行并立即验证可观察变化。</p>
+      <div class="receipt-actions">
+        <button id="ok-once">批准一次</button>
+        <button id="ok-all">本次全部授权</button>
+        <button id="deny" class="danger">拒绝</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

@@ -88,6 +88,8 @@ npm run build
 ## Prove it holds (no network / key needed)
 
 ```bash
+npm run demo      # visual demo: agent drives a live ticket board, evidence recorder alongside
+                  #   (needs ATTEST_API_KEY in env; key stays in the dev server, never the browser)
 npm test          # 240 deterministic tests (FakeLlm + FakeHost), incl. a chaos suite
 npm run typecheck # (fault injection: host/confirm failures must never crash the loop)
 npm run build     # emits dist/

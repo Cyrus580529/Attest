@@ -20,7 +20,8 @@
     "typecheck": "tsc --noEmit",
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
     "prepublishOnly": "npm run build",
-    "repl": "tsx examples/repl.ts"
+    "repl": "tsx examples/repl.ts",
+    "demo": "vite --config examples/demo-web/vite.config.ts"
   },
   "license": "MIT",
   "devDependencies": {
@@ -30,6 +31,7 @@
     "playwright": "^1.44.0",
     "tsx": "^4.7.0",
     "typescript": "^5.4.0",
+    "vite": "^8.1.3",
     "vitest": "^1.4.0"
   }
 }
