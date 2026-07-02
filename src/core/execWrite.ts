@@ -82,7 +82,12 @@ export async function executeWrite(
       steps.push({ type: 'held', tool: req.tool, refId: req.refId, intent });
 
       awaitedConfirm = true;
-      const decision = await confirm(intent);
+      let decision: Awaited<ReturnType<ConfirmFn>>;
+      try {
+        decision = await confirm(intent);
+      } catch {
+        decision = { approved: false }; // 确认通道自身故障 ≠ 用户批准；安全默认是拒绝
+      }
       ledger.record({ kind: 'grant', refId: req.refId, approved: decision.approved, scope: decision.scope });
       if (!decision.approved) {
         steps.push({ type: 'cancelled', tool: req.tool, refId: req.refId, reason: 'user declined' });
@@ -110,10 +115,19 @@ export async function executeWrite(
     target = re.ref;
   }
 
-  const result =
-    req.tool === 'setControl'
-      ? await host.setControl(target, req.value ?? '')
-      : await host.invokeAction(target, req.args);
+  let result;
+  try {
+    result =
+      req.tool === 'setControl'
+        ? await host.setControl(target, req.value ?? '')
+        : await host.invokeAction(target, req.args);
+  } catch (e) {
+    // host/页面 handler 抛异常不许炸穿循环：记账为 error，让模型按真实结果重规划。
+    const error = `host 执行失败：${e instanceof Error ? e.message : String(e)}`;
+    ledger.record({ kind: 'error', tool: req.tool, detail: error });
+    steps.push({ type: 'error', tool: req.tool, refId: req.refId, error });
+    return { steps, toolResult: `ERROR: ${error}`, verified: false };
+  }
   let evidence = diffSnapshots(preExec, result.snapshot);
   // settle：页面 handler 可能异步渲染（网络/setTimeout），写返回一瞬的快照看不到效果。
   // 无变化时有界退避重照再 diff，减少假"未验证"——它会诱导模型重试造成重复副作用。

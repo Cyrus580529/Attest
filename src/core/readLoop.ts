@@ -46,11 +46,18 @@ export async function processCall(
       return { steps: [{ type: 'error', tool: name, refId, error: res.error }], toolResult: `ERROR: ${res.error}` };
     }
     let result: string;
-    if (name === 'readSurface') {
-      result = host.readSurface(res.ref);
-    } else {
-      const r = name === 'openObject' ? await host.openObject(res.ref) : await host.navigate(res.ref);
-      result = serializeSnapshot(r.snapshot);
+    try {
+      if (name === 'readSurface') {
+        result = host.readSurface(res.ref);
+      } else {
+        const r = name === 'openObject' ? await host.openObject(res.ref) : await host.navigate(res.ref);
+        result = serializeSnapshot(r.snapshot);
+      }
+    } catch (e) {
+      // host 读故障不许炸穿循环：记账为 error，模型看到 ERROR 自行改道或如实收尾。
+      const error = `host 读取失败：${e instanceof Error ? e.message : String(e)}`;
+      ledger.record({ kind: 'error', tool: name, detail: error });
+      return { steps: [{ type: 'error', tool: name, refId, error }], toolResult: `ERROR: ${error}` };
     }
     ledger.record({ kind: 'observe', tool: name, detail: result });
     return { steps: [{ type: 'observation', tool: name, refId, result }], toolResult: result };
