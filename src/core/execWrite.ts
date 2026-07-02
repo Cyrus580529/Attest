@@ -50,6 +50,7 @@ export async function executeWrite(
 
   const steps: AgentStep[] = [];
   let confirmed = false;
+  let awaitedConfirm = false;
 
   // 来源感知信任：高危 invoke → held（原有）；任何 inferred（推断而非声明）的写 → 也 held。
   // 因为推断的 handle 我们没那么确定它的语义，"不确定就问"。
@@ -74,6 +75,7 @@ export async function executeWrite(
       ledger.record({ kind: 'intent', refId: req.refId, label: intent.label, expectedEvidence: intent.expectedEvidence });
       steps.push({ type: 'held', tool: req.tool, refId: req.refId, intent });
 
+      awaitedConfirm = true;
       const decision = await confirm(intent);
       ledger.record({ kind: 'grant', refId: req.refId, approved: decision.approved, scope: decision.scope });
       if (!decision.approved) {
@@ -85,11 +87,28 @@ export async function executeWrite(
     }
   }
 
+  // TOCTOU 防线：confirm 可能等了很久，页面早已不是提议时的样子。执行前重照快照、
+  // 重解析 ref——目标消失即拒绝（refuse-before）；diff 基线也取执行前一瞬，
+  // 免得把等待期间的无关变化归因成本次写的证据（污染账本和世界模型）。
+  let preExec = before;
+  let target = res.ref;
+  if (awaitedConfirm) {
+    preExec = host.snapshot();
+    const re = resolveRef(preExec, req.refId, writeKind);
+    if (!re.ok) {
+      const error = `确认等待期间页面已变化，目标不复存在，拒绝执行（${re.error}）`;
+      ledger.record({ kind: 'error', tool: req.tool, detail: error });
+      steps.push({ type: 'error', tool: req.tool, refId: req.refId, error });
+      return { steps, toolResult: `ERROR: ${error}`, verified: false };
+    }
+    target = re.ref;
+  }
+
   const result =
     req.tool === 'setControl'
-      ? await host.setControl(res.ref, req.value ?? '')
-      : await host.invokeAction(res.ref, req.args);
-  const evidence = diffSnapshots(before, result.snapshot);
+      ? await host.setControl(target, req.value ?? '')
+      : await host.invokeAction(target, req.args);
+  const evidence = diffSnapshots(preExec, result.snapshot);
   ledger.record({ kind: 'write', tool: req.tool, refId: req.refId, verified: evidence.changed, evidence: evidence.details });
   steps.push({ type: 'action', tool: req.tool, refId: req.refId, verified: evidence.changed, evidence: evidence.details });
 
@@ -97,5 +116,5 @@ export async function executeWrite(
     ? `done; 证据: ${evidence.details.join('; ')}`
     : '已执行，但未检测到可观察变化（未验证）。';
   const toolResult = confirmed ? `（此高风险操作已由用户确认后才执行）${base}` : base;
-  return { steps, toolResult, verified: evidence.changed, ref: res.ref, evidence: evidence.details };
+  return { steps, toolResult, verified: evidence.changed, ref: target, evidence: evidence.details };
 }

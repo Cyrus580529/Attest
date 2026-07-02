@@ -151,6 +151,46 @@ describe('executeWrite', () => {
     expect(r.verified).toBe(false);
   });
 
+  it('confirm 等待期间目标 ref 消失 → 拒绝执行（不对旧快照的 ref 动手）', async () => {
+    const before = makeSnap(`<button data-agent-action="resolve" data-agent-risk="high">R</button>`);
+    const gone = makeSnap(`<section data-agent-surface="empty">动作没了</section>`);
+    const host = new FakeHostAdapter(before);
+    const confirm: ConfirmFn = () => {
+      host.setCurrent(gone); // 用户思考期间页面变了，动作已不存在
+      return Promise.resolve({ approved: true, scope: 'once' });
+    };
+    const r = await executeWrite(host, new Ledger(), confirm, new Set(), {
+      tool: 'invokeAction',
+      refId: 'action:resolve',
+    });
+    expect(r.verified).toBe(false);
+    expect(r.steps.some((s) => s.type === 'error')).toBe(true);
+    expect(host.log.some((l) => l.kind === 'invoke')).toBe(false); // 绝不执行
+  });
+
+  it('confirm 等待期间的无关变化不得归因为本次写的证据（防假验证）', async () => {
+    const before = makeSnap(
+      `<button data-agent-action="ping" data-agent-risk="high">P</button><div data-agent-object="task:1">t1</div>`,
+    );
+    // 等待期间页面自己多了 task:2（与本次写无关）；动作本身无任何效果。
+    const during = makeSnap(
+      `<button data-agent-action="ping" data-agent-risk="high">P</button><div data-agent-object="task:1">t1</div><div data-agent-object="task:2">t2</div>`,
+    );
+    const host = new FakeHostAdapter(before); // action:ping 无 transition → 执行无效果
+    const confirm: ConfirmFn = () => {
+      host.setCurrent(during);
+      return Promise.resolve({ approved: true, scope: 'once' });
+    };
+    const ledger = new Ledger();
+    const r = await executeWrite(host, ledger, confirm, new Set(), {
+      tool: 'invokeAction',
+      refId: 'action:ping',
+    });
+    // 老行为会 diff(等待前, 执行后) 把 task:2 的出现记成本次写的证据 → verified true（假验证）。
+    expect(r.verified).toBe(false);
+    expect(ledger.entries.some((e) => e.kind === 'write' && e.verified)).toBe(false);
+  });
+
   it('WriteResult 回传本次验证的 evidence（供记忆/世界模型录制为预测）', async () => {
     const before = makeSnap(`<input data-agent-control="qty" value="0"/>`);
     const after = makeSnap(`<input data-agent-control="qty" value="5"/>`);

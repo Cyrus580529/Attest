@@ -15,6 +15,11 @@ export class FakeHostAdapter implements HostAdapter {
     return this.current;
   }
 
+  /** 测试用：模拟外部原因（其他用户/定时器/confirm 等待期间）导致的页面变化。 */
+  setCurrent(snapshot: PageSnapshot): void {
+    this.current = snapshot;
+  }
+
   readSurface(ref: Ref): string {
     return this.current.surfaces.find((s) => s.ref.id === ref.id)?.text ?? '';
   }
