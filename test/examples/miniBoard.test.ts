@@ -6,7 +6,12 @@ import { parseContract } from '../../src/contract/parseContract';
 const html = readFileSync(resolve(process.cwd(), 'examples/mini-board/index.html'), 'utf8');
 
 beforeEach(() => {
-  document.body.innerHTML = html.replace(/[\s\S]*<body[^>]*>/i, '').replace(/<\/body>[\s\S]*/i, '');
+  // 剥掉 <script>：happy-dom 会真的按默认 base（localhost:3000）去拉 main.ts，
+  // 连不上就向 stderr 打 unhandled ECONNREFUSED——契约测试只需要标记，不需要脚本。
+  document.body.innerHTML = html
+    .replace(/[\s\S]*<body[^>]*>/i, '')
+    .replace(/<\/body>[\s\S]*/i, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '');
 });
 
 describe('mini-board 示范页契约', () => {
