@@ -122,8 +122,10 @@ function worldModelPrior(deps: LoopDeps): string {
       lines.push(`- ${a.name} → 已知多次执行均无可观察变化，勿依赖它达成效果`);
     }
   }
+  // 批量+predict 的鼓励只随先验出现：live A/B 实测「无知识的投机」全落空反而更贵，
+  // 有已知效果时批量+照抄 predict 才是纯赚（命中连续执行省往返）。
   return lines.length > 0
-    ? `\n\n（已知动作效果，可用于规划与 predict；仍以实际验证为准）\n${lines.join('\n')}`
+    ? `\n\n（已知动作效果，可用于规划；仍以实际验证为准。对下列已知效果的动作，尽量在同一回合批量提交多步并给写步骤附 predict——直接照抄已知效果即可，命中会自动连续执行、省去往返；对效果未知的动作不要猜 predict。）\n${lines.join('\n')}`
     : '';
 }
 
