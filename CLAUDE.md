@@ -75,6 +75,8 @@ npx vitest run test/live   # 脚本化 live 场景
 
 **切片14 写路径加固**（已 ship，确定性 202 绿，**待真模型 live 回归**；切片11-13=适配器硬化/上下文管理/浏览器桥，见 git log）：混沌套件（`test/core/chaos.test.ts` 故障注入：任何故障下 loop 必须走到 finish、outcome 与账本一致、绝不裸抛）暴露并修掉四洞——① **TOCTOU**：confirm 可等任意久，执行前重照快照重解析 ref（目标消失即拒），diff 基线取执行前一瞬（防等待期无关变化被归因成证据→假验证污染世界模型）；② **验证 settle**：写后无变化按 25/75ms 退避重照再 diff（页面异步渲染防假"未验证"），未验证文案明示"≠失败勿盲目重试"（防重复副作用）；③ host/confirm 抛异常 → 记账 error/按拒绝处理，不炸穿循环；④ `computeOutcome` 补规则：写工具 error 且其后无验证写（未恢复）→ failed（此前写尝试全 error 也判 completed）。红线只加严不放松。
 
+**切片15 漂移检测**（已 ship，确定性 214 绿，**待真模型 live 验收**）：验证信号的第四吃（安全闸/投机许可证/学习信号之外），兑现 VOIX 定位第三柱"漂移"。同签名下已知动作不再产生已知效果=漂移的确定性证据：写时裁定（每次执行落账即裁定先验，不留给模型）、两级阈值（落空1→suspect 注入带警示，连续2→`DriftEvent`+AgentStep `drift` 上报+自愈采纳新行为/逐出）、形状比较（剥实例 id 比结构，task:9 vs task:10 不误报）、负样本（≥2 次无效果→"勿依赖"反先验）、持久化 v2 兼容 v1。研究谱系（DDM/STALE/SkillGuard/Library Drift/WMA）见 `docs/specs/…slice15…design.md`。
+
 **真模型验收脚本**：`examples/live-check.ts`（玩具看板 S1/S2/S3）、`examples/live-real.ts`（真实工作台 T1-T4）、`examples/live-pages.ts`（导航/分页/嵌套）。绕 happy-dom CORS 用原生 fetch；vitest 的 `test/live` 在 happy-dom 下会撞 CORS，真验收走这两个脚本。
 
 **开放线（优先级序）**：
