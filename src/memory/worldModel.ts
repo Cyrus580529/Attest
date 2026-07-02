@@ -35,20 +35,24 @@ interface Entry {
   misses: number;
 }
 
-/** diff detail 的结构形状：剥掉实例 id / 具体值，只留「什么种类的东西发生了什么」。 */
-function shapeOf(detail: string): string {
-  const obj = /^object (appeared|gone): object:([^:]+):/.exec(detail);
-  if (obj) return `object ${obj[1]}: object:${obj[2]}`;
-  const ctrl = /^control (control:.+?): /.exec(detail);
-  if (ctrl) return `control ${ctrl[1]} changed`;
-  if (detail.startsWith('url: ')) return 'url changed';
+/**
+ * diff detail 的泛化形：剥掉实例 id / 具体值，只留「什么种类的东西发生了什么」。
+ * 既是漂移裁定的比较单位，也是先验注入/predict 用的期望形——泛化后必然是
+ * 同形实际 diff 的子串（前缀），predict 照抄即可跨实例命中（apply:1 学的，apply:2 也中）。
+ */
+export function genericExpectation(detail: string): string {
+  const obj = /^(object (?:appeared|gone): object:[^:]+):/.exec(detail);
+  if (obj) return obj[1]!;
+  const ctrl = /^(control control:.+?): /.exec(detail);
+  if (ctrl) return ctrl[1]!;
+  if (detail.startsWith('url: ')) return 'url:';
   return detail; // surface … changed 已是形状级
 }
 
 /** 命中判定：已知效果的每个形状都出现在实际 diff 里（页面多做别的不算落空）。 */
 function shapeHit(known: string[], actual: string[]): boolean {
-  const got = new Set(actual.map(shapeOf));
-  return known.every((k) => got.has(shapeOf(k)));
+  const got = new Set(actual.map(genericExpectation));
+  return known.every((k) => got.has(genericExpectation(k)));
 }
 
 const DRIFT_THRESHOLD = 2; // 连续落空次数达此值 → 判漂移

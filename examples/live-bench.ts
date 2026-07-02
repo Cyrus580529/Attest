@@ -107,15 +107,38 @@ const T2 = {
   },
 };
 
+const T3 = {
+  name: 'T3 产生对象的动作（predict 需跨实例命中）',
+  ask: '连续添加三条记录。',
+  setup: () => {
+    document.body.innerHTML =
+      `<ul data-agent-surface="list"><li data-agent-object="record:0">记录0（示例）</li></ul>` +
+      `<button data-agent-action="add">添加记录</button>` +
+      `<p data-agent-surface="count">共 1 条</p>`;
+    let n = 0;
+    document.querySelector('[data-agent-action=add]')!.addEventListener('click', () => {
+      n += 1;
+      const li = document.createElement('li');
+      li.setAttribute('data-agent-object', `record:${n}`);
+      li.textContent = `记录${n}`;
+      document.querySelector('[data-agent-surface=list]')!.appendChild(li);
+      document.querySelector('[data-agent-surface=count]')!.textContent = `共 ${n + 1} 条`;
+    });
+  },
+};
+
 function fmt(m: Metrics): string {
   return `rounds=${m.rounds} req=${m.requests} tok=${m.prompt}+${m.completion} tools=${m.toolCalls} predict=${m.specHits}/${m.specTotal} verified=${m.verified} outcome=${m.outcome} ${(m.wallMs / 1000).toFixed(1)}s`;
 }
 const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
+const only = process.argv[3]; // 可选：只跑某个任务（T1/T2/T3）
+const tasks = [T1, T2, T3].filter((t) => !only || t.name.startsWith(only));
+
 console.log(`=== 先验净收益 live A/B（${model}，reps=${REPS}）===`);
 const summary: Record<string, { cold: Metrics[]; warm: Metrics[] }> = {};
 
-for (const task of [T1, T2]) {
+for (const task of tasks) {
   console.log(`\n## ${task.name}`);
   summary[task.name] = { cold: [], warm: [] };
   for (let rep = 1; rep <= REPS; rep++) {

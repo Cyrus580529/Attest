@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { WorldModel } from '../../src/memory/worldModel';
+import { WorldModel, genericExpectation } from '../../src/memory/worldModel';
 import { parseContract } from '../../src/contract/parseContract';
 
 const snap = () => {
@@ -32,6 +32,36 @@ describe('WorldModel（从证据学 动作→diff 因果，按签名闸门）', 
     const s = snap();
     wm.learn(s, 'done', { changed: false, details: [] });
     expect(wm.predict(s, 'done')).toBeNull();
+  });
+});
+
+describe('genericExpectation（先验期望的泛化形：剥实例 id/具体值，保持是实际 diff 的子串）', () => {
+  it('object 出现/消失：剥实例 id，保留类型', () => {
+    expect(genericExpectation('object appeared: object:apply:1')).toBe('object appeared: object:apply');
+    expect(genericExpectation('object gone: object:task:42')).toBe('object gone: object:task');
+  });
+
+  it('control：剥具体值', () => {
+    expect(genericExpectation('control control:qty: 0 → 5')).toBe('control control:qty');
+  });
+
+  it('url：剥具体地址', () => {
+    expect(genericExpectation('url: /a → /b')).toBe('url:');
+  });
+
+  it('surface 已是形状级：原样', () => {
+    expect(genericExpectation('surface surface:status changed')).toBe('surface surface:status changed');
+  });
+
+  it('泛化形必须是对应实际 diff 的子串（predict 跨实例命中的前提）', () => {
+    const cases: [string, string][] = [
+      ['object appeared: object:apply:1', 'object appeared: object:apply:2'],
+      ['control control:qty: 0 → 5', 'control control:qty: 5 → 9'],
+      ['url: /a → /b', 'url: /b → /c'],
+    ];
+    for (const [learned, actualNext] of cases) {
+      expect(actualNext.includes(genericExpectation(learned))).toBe(true);
+    }
   });
 });
 

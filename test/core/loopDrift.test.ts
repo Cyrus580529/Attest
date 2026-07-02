@@ -85,6 +85,83 @@ describe('漂移检测接入读循环', () => {
     expect(wm.noEffectCount(s0, 'apply')).toBe(1);
   });
 
+  it('先验注入用泛化形：不带实例 id（否则模型照抄当 predict 必然跨实例落空）', async () => {
+    const s0 = build(PAGE('v0'));
+    const wm = new WorldModel();
+    wm.learn(s0, 'apply', {
+      changed: true,
+      details: ['object appeared: object:task:7', 'control control:qty: 0 → 5'],
+    });
+    const host = new FakeHostAdapter(s0);
+    const llm = new FakeLlmAdapter([toolCallTurn('finish', { answer: '不用做' })]);
+    await collect(createAgent({ llm, host, worldModel: wm }).run('看看'));
+
+    const userMsg = llm.calls[0]!.messages.find((m) => m.role === 'user')!.content ?? '';
+    expect(userMsg).toContain('object appeared: object:task');
+    expect(userMsg).not.toContain('object:task:7'); // 实例 id 不得泄进先验
+    expect(userMsg).toContain('control control:qty');
+    expect(userMsg).not.toContain('0 → 5'); // 具体值不得泄进先验
+  });
+
+  it('注入上限：先验行数最多 8 行，active 优先于 suspect', async () => {
+    // 10 个动作全有先验，其中 action a0 是 suspect——应被挤出（active 优先）
+    const html =
+      Array.from({ length: 10 }, (_, i) => `<button data-agent-action="a${i}">A${i}</button>`).join('') +
+      `<p data-agent-surface="status">v0</p>`;
+    const s0 = build(html);
+    const wm = new WorldModel();
+    for (let i = 0; i < 10; i++) {
+      wm.learn(s0, `a${i}`, { changed: true, details: ['surface surface:status changed'] });
+    }
+    wm.learn(s0, 'a0', { changed: true, details: ['object appeared: object:x:1'] }); // a0 落空 → suspect
+    const host = new FakeHostAdapter(s0);
+    const llm = new FakeLlmAdapter([toolCallTurn('finish', { answer: 'ok' })]);
+    await collect(createAgent({ llm, host, worldModel: wm }).run('看看'));
+
+    const userMsg = llm.calls[0]!.messages.find((m) => m.role === 'user')!.content ?? '';
+    const priorLines = userMsg.split('\n').filter((l: string) => l.startsWith('- '));
+    expect(priorLines.length).toBeLessThanOrEqual(8);
+    expect(userMsg).not.toContain('- a0 →'); // suspect 的 a0 被 active 挤出
+  });
+
+  it('中途换页（签名变化）→ 新页先验搭在该工具结果上补注', async () => {
+    const pageA = build(`<div data-agent-object="item:1">条目1</div><p data-agent-surface="list">列表</p>`, '/list');
+    const pageB = build(
+      `<button data-agent-action="approve">通过</button><p data-agent-surface="detail">详情</p>`,
+      '/detail',
+    );
+    const wm = new WorldModel();
+    wm.learn(pageB, 'approve', { changed: true, details: ['surface surface:detail changed'] });
+
+    const host = new FakeHostAdapter(pageA, { 'object:item:1': pageB });
+    const llm = new FakeLlmAdapter([
+      toolCallTurn('openObject', { ref: 'object:item:1' }),
+      toolCallTurn('finish', { answer: 'ok' }),
+    ]);
+    await collect(createAgent({ llm, host, worldModel: wm }).run('打开条目1'));
+
+    // 第二回合模型看到的 openObject 工具结果里，应补注 pageB 的先验
+    const toolMsg = llm.calls[1]!.messages.find((m) => m.role === 'tool');
+    expect(toolMsg?.content).toContain('approve → 预期变化: surface surface:detail changed');
+  });
+
+  it('同签名页面内的工具调用不重复补注先验', async () => {
+    const s0 = build(PAGE('v0'));
+    const wm = new WorldModel();
+    wm.learn(s0, 'apply', { changed: true, details: ['surface surface:status changed'] });
+    const host = new FakeHostAdapter(s0); // 无 transition，签名恒定
+    const llm = new FakeLlmAdapter([
+      toolCallTurn('readSurface', { ref: 'surface:status' }),
+      toolCallTurn('finish', { answer: 'ok' }),
+    ]);
+    await collect(createAgent({ llm, host, worldModel: wm }).run('看看'));
+
+    const userMsg = llm.calls[0]!.messages.find((m) => m.role === 'user')!.content ?? '';
+    expect(userMsg).toContain('apply → 预期变化'); // 开头已注入
+    const toolMsg = llm.calls[1]!.messages.find((m) => m.role === 'tool');
+    expect(toolMsg?.content).not.toContain('预期变化'); // 同签名不重复
+  });
+
   it('先验注入分级：suspect 带警示、负先验（≥2 次无效果）明示勿依赖', async () => {
     const s0 = build(
       `<button data-agent-action="apply">申请</button>` +

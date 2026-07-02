@@ -9,6 +9,9 @@ import { executeWrite } from './execWrite';
 import { Ledger } from '../honesty/ledger';
 import { guardFinish } from '../honesty/narrationGuard';
 import type { WorldModel } from '../memory/worldModel';
+import { genericExpectation } from '../memory/worldModel';
+import { pageSignature } from '../memory/pageSignature';
+import type { PageSnapshot } from '../types';
 import { finishStep, factualLedgerSummary, observationDigest } from './finish';
 import { compactMessages } from './compaction';
 import { matchesPrediction } from './speculation/prediction';
@@ -106,22 +109,34 @@ export async function processCall(
  * 分级注入（授权输出）：active 原样；suspect 带警示（最近一次未按已知效果发生）；
  * 负先验（≥2 次确认无效果）明示勿依赖——先验不只说哪条路通，也说哪条路死。
  */
+const MAX_PRIOR_LINES = 8; // 注入上限：防陈旧注入/检索稀释把先验变负担（Library Drift 教训）
+
 function worldModelPrior(deps: LoopDeps): string {
   const { worldModel, host } = deps;
   if (!worldModel) return '';
-  const snap = host.snapshot();
-  const lines: string[] = [];
+  return worldModelPriorText(worldModel, host.snapshot());
+}
+
+function worldModelPriorText(worldModel: WorldModel, snap: PageSnapshot): string {
+  // rank 0=active 1=suspect 2=负先验：额度不够时 active 优先——它们才是可照抄 predict 的。
+  const ranked: { rank: number; line: string }[] = [];
   for (const a of snap.actions) {
     const p = worldModel.lookup(snap, a.name);
     if (p) {
       const caveat = p.status === 'suspect' ? '（注意：最近一次未按此效果发生，先验证再依赖）' : '';
-      lines.push(`- ${a.name} → 预期变化: ${p.details.join('; ')}${caveat}`);
+      // 泛化形注入：剥实例 id/具体值——原文带 id 会让模型照抄 predict 后跨实例必落空
+      const expected = [...new Set(p.details.map(genericExpectation))].join('; ');
+      ranked.push({ rank: p.status === 'suspect' ? 1 : 0, line: `- ${a.name} → 预期变化: ${expected}${caveat}` });
       continue;
     }
     if (worldModel.noEffectCount(snap, a.name) >= 2) {
-      lines.push(`- ${a.name} → 已知多次执行均无可观察变化，勿依赖它达成效果`);
+      ranked.push({ rank: 2, line: `- ${a.name} → 已知多次执行均无可观察变化，勿依赖它达成效果` });
     }
   }
+  const lines = ranked
+    .sort((a, b) => a.rank - b.rank)
+    .slice(0, MAX_PRIOR_LINES)
+    .map((x) => x.line);
   // 批量+predict 的鼓励只随先验出现：live A/B 实测「无知识的投机」全落空反而更贵，
   // 有已知效果时批量+照抄 predict 才是纯赚（命中连续执行省往返）。
   return lines.length > 0
@@ -137,6 +152,7 @@ export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGe
   const { llm, host, tools, systemPrompt, confirm, worldModel, maxSteps, maxContextTokens } = deps;
   const ledger = new Ledger();
   const grantedScopes = new Set<string>(); // 本 run 内共享的作用域授权（scope: 'all'）
+  let lastPriorSig = pageSignature(host.snapshot()); // 起始页先验随 user 消息注入，此后按签名变化补注
 
   let messages: LlmMessage[] = [
     { role: 'system', content: systemPrompt },
@@ -172,7 +188,18 @@ export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGe
       }
       const result = await processCall(call, host, ledger, confirm, grantedScopes, worldModel);
       for (const s of result.steps) yield s;
-      messages.push({ role: 'tool', toolCallId: call.id, content: result.toolResult });
+      // 中途换页（签名变化）时把新页先验搭在本工具结果上补注——多页流程里先验
+      // 不只服务起始页；同签名不重复，token 只在换页时花。
+      let content = result.toolResult;
+      if (worldModel) {
+        const sig = pageSignature(host.snapshot());
+        if (sig !== lastPriorSig) {
+          lastPriorSig = sig;
+          const prior = worldModelPriorText(worldModel, host.snapshot());
+          if (prior) content += prior;
+        }
+      }
+      messages.push({ role: 'tool', toolCallId: call.id, content });
       responded.add(call.id);
 
       // lookahead：模型可在一回合内提多步并给 predict。写步命中预测则继续执行本回合后续步；
