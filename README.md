@@ -11,13 +11,20 @@ bet: pages *cooperate* with the agent through a contract, and in exchange the ag
 
 The result is an agent that **cannot lie about what it did.** Its final `outcome`
 (`completed` / `failed` / `cancelled`) is *computed from an evidence ledger*, never taken
-from the model's own narration.
+from the model's own narration. Scope this claim precisely: the ledger is a **ceiling on
+claims, not a business-semantics oracle** — a snapshot diff proves an action *had an
+effect*, not that the goal succeeded (an error banner is also an observable change). So the
+model may only **downgrade** the computed outcome (`goalMet: false` when the page reports a
+business failure), never upgrade it.
 
 - **Ref-binding + harness validation** — a `ref` the model emits must resolve to a real
   object the page exposes, or the action is refused. No guessed selectors, no hallucinated
   actions.
 - **Verify-or-refuse** — after every write, the harness diffs the page snapshot; the
-  observable change *is* the evidence. No evidence → the write did not "succeed".
+  observable change *is* the evidence. No evidence → the write did not "succeed". The diff
+  attests *effect*, not correctness — which is why cooperating pages should expose failures
+  observably too (a status/error surface), and why the model has a downgrade-only channel
+  for business failures it reads off the page.
 - **High-risk held** — submit / checkout / approve and other dangerous actions pause for an
   explicit Intent Receipt first. Default is deny.
 - **Lookahead + priors, not blind replay** — the model plans several steps ahead and may
@@ -81,7 +88,7 @@ npm run build
 ## Prove it holds (no network / key needed)
 
 ```bash
-npm test          # 229 deterministic tests (FakeLlm + FakeHost), incl. a chaos suite
+npm test          # 234 deterministic tests (FakeLlm + FakeHost), incl. a chaos suite
 npm run typecheck # (fault injection: host/confirm failures must never crash the loop)
 npm run build     # emits dist/
 ```
@@ -200,16 +207,18 @@ Either way, a **new page** that implements the contract is drivable with **no ex
 | `refResolver` | Verifies a `ref` exists and its kind matches; anything else is an `error`, never executed |
 | `verifier` | Diffs the snapshot after a write — the observable change is the evidence |
 | `Ledger` | Append-only evidence log (observe / intent / grant / write) |
-| `narrationGuard` | Computes `outcome` from the ledger; forbids narrating a failure or cancellation as success |
+| `narrationGuard` | Computes `outcome` from the ledger; forbids narrating a failure or cancellation as success. The model's self-assessment (`goalMet`) can only downgrade `completed` → `failed`, never the reverse |
 | `WorldModel` / `RecipeBook` | Opt-in priors — learned (action → diff) and successful programs — injected into context to plan faster; never bypass the verifier. The `WorldModel` adjudicates every executed write at record time (hit / suspect / drift) and self-heals |
 
 ## Status
 
-Core is complete and hardened — contract layer (VOIX + native), single tool-calling read
+**Early-stage research kernel.** The core invariants are in place and chaos-tested — but
+this is a young library, not a battle-worn product; expect API movement before 1.0. What
+exists today: contract layer (VOIX + native), single tool-calling read
 loop with lookahead, honesty layer (verifier + ledger + narration guard + high-risk held),
 TOCTOU-safe write path with settle-based verification, code-as-action with recipe priors,
 world-model priors with drift detection and self-healing, cross-session persistence
-(`toJSON` / `fromJSON`). **229 deterministic tests green** (incl. chaos fault-injection),
+(`toJSON` / `fromJSON`). **234 deterministic tests green** (incl. chaos fault-injection),
 live-accepted against a real model (`deepseek-v4-pro`) across happy paths, rich page shapes,
 adversarial scenarios, and drift. Design notes, bench reports and the live-acceptance
 checklist live in `docs/`.
