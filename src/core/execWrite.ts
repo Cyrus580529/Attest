@@ -91,7 +91,12 @@ export async function executeWrite(
       ledger.record({ kind: 'grant', refId: req.refId, approved: decision.approved, scope: decision.scope });
       if (!decision.approved) {
         steps.push({ type: 'cancelled', tool: req.tool, refId: req.refId, reason: 'user declined' });
-        return { steps, toolResult: 'ACTION CANCELLED: 用户拒绝了该写操作。', verified: false };
+        return {
+          steps,
+          toolResult:
+            'ACTION CANCELLED: 用户拒绝了该写操作。不要再次尝试同一动作（会再次被拦下）；请就此如实收尾，或改做用户可能接受的其他事。',
+          verified: false,
+        };
       }
       confirmed = true;
       if (decision.scope === 'all') grantedScopes.add(name);

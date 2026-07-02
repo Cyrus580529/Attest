@@ -73,7 +73,7 @@ describe('executeWrite', () => {
     expect(r.evidence!.some((d) => d.includes('task:9'))).toBe(true);
   });
 
-  it('高危 invoke 默认拒绝 → cancelled，无 write 记账', async () => {
+  it('高危 invoke 默认拒绝 → cancelled，无 write 记账，且明示勿重试同一动作', async () => {
     const before = makeSnap(`<button data-agent-action="resolve" data-agent-risk="high">R</button>`);
     const host = new FakeHostAdapter(before);
     const ledger = new Ledger();
@@ -86,6 +86,8 @@ describe('executeWrite', () => {
     expect(r.steps.some((s) => s.type === 'cancelled')).toBe(true);
     expect(ledger.entries.some((e) => e.kind === 'grant' && !e.approved)).toBe(true);
     expect(ledger.entries.some((e) => e.kind === 'write')).toBe(false);
+    // 不给这个引导，模型的常见反应是再试一次同一动作 → 再次 held → 浪费回合直至耗尽步数
+    expect(r.toolResult).toContain('不要再次尝试');
   });
 
   it('高危 invoke approve(once) → 执行并验证', async () => {
