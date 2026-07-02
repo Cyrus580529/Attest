@@ -243,7 +243,13 @@ function renderStep(s: AgentStep): void {
       entry('speculate', '⚡', `<span class="meta">predict</span> ${esc(s.tool)} ${s.hit ? '命中，连续执行' : '落空'}`);
       break;
     case 'mispredict':
-      entry('speculate', '↻', `<span class="meta">mispredict</span> 预测落空，回到模型重规划`);
+      entry(
+        'speculate',
+        '↻',
+        `<span class="meta">mispredict</span> 预测落空，回到模型重规划` +
+          `<div class="evidence">预期: ${esc(s.expected.join('; '))}</div>` +
+          `<div class="evidence">实际: ${esc(s.actual.join('; ') || '（无变化）')}</div>`,
+      );
       break;
     case 'drift':
       entry('error', '≠', `<span class="meta">DRIFT</span> ${esc(s.refId ?? s.tool)} 行为漂移：已知效果不再发生`);
@@ -323,7 +329,7 @@ form.addEventListener('submit', async (e) => {
   document.querySelector('.tape-hint')?.remove();
   entry('task', '»', esc(task));
   try {
-    const agent = createAgent({ llm, host, confirm: confirmIntent, worldModel, maxSteps: 28 });
+    const agent = createAgent({ llm, host, confirm: confirmIntent, worldModel, maxSteps: 44 });
     for await (const step of agent.run(task)) renderStep(step);
     localStorage.setItem(WM_KEY, JSON.stringify(worldModel.toJSON()));
   } catch (err) {

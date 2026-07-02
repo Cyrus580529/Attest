@@ -16,6 +16,21 @@ describe('serializeSnapshot', () => {
     expect(text).toContain('surface surface:detail — detail');
   });
 
+  // 修复自 demo live：surface 只列名不给文本，模型 observePage 看不见"第 1/3 页·共 18 单"，
+  // 只做第 1 页就宣称"所有工单已解决"。快照必须带 surface 文本预览（截断）——可见性是数据问题，不是提示词问题。
+  it('surface 行带文本预览（截断），空文本不带', () => {
+    document.body.innerHTML =
+      `<span data-agent-surface="page_info">第 1 / 3 页 · 共 18 单</span>` +
+      `<section data-agent-surface="huge">${'长'.repeat(300)}</section>` +
+      `<section data-agent-surface="empty"></section>`;
+    const text = serializeSnapshot(parseContract(document.body, '/p'));
+    expect(text).toContain('surface surface:page_info — page_info：第 1 / 3 页 · 共 18 单');
+    const hugeLine = text.split('\n').find((l) => l.includes('surface:huge'))!;
+    expect(hugeLine.length).toBeLessThan(200);
+    expect(hugeLine).toContain('…');
+    expect(text).toContain('surface surface:empty — empty');
+  });
+
   function manyTickets(n: number): string {
     document.body.innerHTML = Array.from({ length: n }, (_, i) => `<div data-agent-object="ticket:${i}">工单${i}</div>`).join('');
     return serializeSnapshot(parseContract(document.body, '/b'), { maxPerType: 20 });

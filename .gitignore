@@ -5,3 +5,4 @@ dist/
 
 # repl 持久化的世界模型先验（本地缓存，不入库）
 examples/.attest-worldmodel.json
+.scratch/

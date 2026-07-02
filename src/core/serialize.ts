@@ -58,6 +58,11 @@ export function serializeSnapshot(s: PageSnapshot, opts: SerializeOptions = {}):
     lines.push(`action ${a.ref.id}${params}${a.risk === 'high' ? ' [high-risk]' : ''} — ${a.label}`);
   }
   for (const c of s.controls) lines.push(`control ${c.ref.id} = ${c.value ?? ''} — ${c.label}`);
-  for (const su of s.surfaces) lines.push(`surface ${su.ref.id} — ${su.name}`);
+  // surface 带文本预览：不带的话模型 observePage 看不见"第 1/3 页·共 18 单"这类自述，
+  // 会只处理当前页就宣称"全部完成"（demo live 实测）。截断防长文吃上下文，全文仍走 readSurface。
+  for (const su of s.surfaces) {
+    const preview = su.text.length > 120 ? `${su.text.slice(0, 119)}…` : su.text;
+    lines.push(`surface ${su.ref.id} — ${su.name}${preview ? `：${preview}` : ''}`);
+  }
   return lines.join('\n');
 }
