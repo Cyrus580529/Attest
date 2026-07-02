@@ -44,6 +44,21 @@ describe('resolveRef 容错（模型省略 kind 前缀）', () => {
     const r = resolveRef(snap(), 'detail', 'object'); // object:detail 不存在
     expect(r.ok).toBe(false);
   });
+
+  it('前缀重复（模型多加一层）：object:object:task:42 → object:task:42', () => {
+    const r = resolveRef(snap(), 'object:object:task:42', 'object');
+    expect(r.ok && r.ref.id).toBe('object:task:42');
+  });
+
+  it('前缀重复：surface:surface:detail → surface:detail', () => {
+    const r = resolveRef(snap(), 'surface:surface:detail', 'surface');
+    expect(r.ok && r.ref.id).toBe('surface:detail');
+  });
+
+  it('剥一层后仍不存在 → 报错（不乱猜）', () => {
+    const r = resolveRef(snap(), 'object:object:task:999', 'object');
+    expect(r.ok).toBe(false);
+  });
 });
 
 describe('resolveObjectByLabel（按描述/标签解析对象，歧义即拒绝）', () => {

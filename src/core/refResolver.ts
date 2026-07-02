@@ -36,10 +36,17 @@ export function resolveRef(
     ...snapshot.surfaces.map((n) => n.ref),
   ];
   let found = all.find((r) => r.id === refId);
-  // 容错：模型常省略 kind 前缀（detail→surface:detail、ticket:101→object:ticket:101）。
-  // 用工具的 expectedKind 补全后再找；仍只接受真实存在的 ref，不放任猜测。
-  if (!found && !refId.startsWith(`${expectedKind}:`)) {
-    found = all.find((r) => r.id === `${expectedKind}:${refId}`);
+  // 容错：模型常搞错 kind 前缀——漏了（detail→surface:detail）就补，多了一层
+  // （surface:surface:detail）就剥。用工具的 expectedKind 归一后再找；
+  // 仍只接受真实存在的 ref，不放任猜测。
+  if (!found) {
+    const prefix = `${expectedKind}:`;
+    const normalized = refId.startsWith(prefix + prefix)
+      ? refId.slice(prefix.length) // 剥掉重复的一层
+      : refId.startsWith(prefix)
+        ? refId // 已单层前缀却没命中：不再改写
+        : prefix + refId; // 漏了前缀：补上
+    if (normalized !== refId) found = all.find((r) => r.id === normalized);
   }
   if (!found) {
     return { ok: false, error: `ref "${refId}" not found in current page` };
