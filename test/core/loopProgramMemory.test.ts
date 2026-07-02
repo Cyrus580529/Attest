@@ -37,6 +37,23 @@ describe('程序记忆——配方先验（codeAsAction + recipes）', () => {
     expect(out[0]?.goal).toBe('填300');
   });
 
+  it('写已验证但复盘申报 goalMet:false → failed，业务失败的程序不入配方库', async () => {
+    const before = build(`<input data-agent-control="amount" value="0" /><section data-agent-surface="msg">就绪</section>`);
+    const after = build(
+      `<input data-agent-control="amount" value="300" /><section data-agent-surface="msg">金额超限，未受理</section>`,
+      '/p',
+    );
+    const recipes = new RecipeBook();
+    const llm = new FakeLlmAdapter([
+      toolCallTurn('runProgram', { program: fillProgram('300') }),
+      toolCallTurn('finish', { answer: '页面提示金额超限，未受理', goalMet: false }),
+    ]);
+    const host = new FakeHostAdapter(before, { 'control:amount': after });
+    const steps = await collect(createAgent({ llm, host, codeAsAction: true, recipes }).run('填300'));
+    expect(steps.at(-1)).toMatchObject({ type: 'finish', outcome: 'failed' });
+    expect(recipes.recall(pageSignature(before), 3)).toHaveLength(0);
+  });
+
   it('同签名第二次运行：历史配方被注入到喂给 LLM 的 messages', async () => {
     const before = build(`<input data-agent-control="amount" value="0" />`);
     const recipes = new RecipeBook();

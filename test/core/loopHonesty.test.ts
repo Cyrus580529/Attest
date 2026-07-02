@@ -82,6 +82,20 @@ describe('loop honesty', () => {
     expect(finish?.type === 'finish' && finish.answer).toContain('未能确认');
   });
 
+  it('写已验证但页面显示业务失败：finish 报 goalMet:false → outcome=failed', async () => {
+    const before = build(`<button data-agent-action="transfer">转账</button><section data-agent-surface="msg">就绪</section>`);
+    const after = build(`<button data-agent-action="transfer">转账</button><section data-agent-surface="msg">余额不足，转账失败</section>`);
+    const llm = new FakeLlmAdapter([
+      toolCallTurn('invokeAction', { ref: 'action:transfer' }),
+      toolCallTurn('finish', { answer: '页面提示余额不足，转账没有成功', goalMet: false }),
+    ]);
+    const host = new FakeHostAdapter(before, { 'action:transfer': after });
+    const steps = await collect(createAgent({ llm, host }).run('转账'));
+
+    expect(steps.some((s) => s.type === 'action' && s.verified)).toBe(true);
+    expect(steps.at(-1)).toMatchObject({ type: 'finish', outcome: 'failed' });
+  });
+
   it('finish 携带 ledger 票根', async () => {
     const llm = new FakeLlmAdapter([toolCallTurn('finish', { answer: 'hi' })]);
     const host = new FakeHostAdapter(build(`<div data-agent-object="task:1">A</div>`));

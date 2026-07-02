@@ -182,7 +182,9 @@ export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGe
     const responded = new Set<string>();
     for (const call of turn.toolCalls) {
       if (call.name === 'finish') {
-        yield finishStep(String(call.arguments.answer ?? '').trim(), ledger);
+        // 自评降级通道：goalMet:false = 模型申报"页面反馈显示业务失败"。只降不升（guardFinish 保证）。
+        const claim = call.arguments.goalMet === false ? { goalMet: false } : undefined;
+        yield finishStep(String(call.arguments.answer ?? '').trim(), ledger, claim);
         finished = true;
         break;
       }

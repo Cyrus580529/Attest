@@ -21,7 +21,15 @@ export const FINISH_TOOL: ToolSchema = {
   description: '结束并给出用户可见的最终回答。',
   parameters: {
     type: 'object',
-    properties: { answer: { type: 'string', description: '给用户的最终回答' } },
+    properties: {
+      answer: { type: 'string', description: '给用户的最终回答' },
+      goalMet: {
+        type: 'boolean',
+        description:
+          '任务目标是否真正达成。若页面反馈显示操作在业务上失败或被拒绝（如错误提示），' +
+          '置 false 并在 answer 里说明——这只会把结果如实降级为 failed；置 true 不能掩盖账本里的失败。',
+      },
+    },
     required: ['answer'],
     additionalProperties: false,
   },

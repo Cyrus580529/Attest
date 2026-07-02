@@ -5,6 +5,7 @@ export function defaultSystemPrompt(): string {
     '只能引用工具结果里出现过的 ref id，且必须原样照抄完整 id（如 object:ticket:101、surface:detail）：不要省略前缀、不要重复前缀（已带 action:/surface: 的不要再加一层）、不要编造。',
     '高风险操作会先暂停等待用户确认；完成时调用 finish 给出用户可见的回答。',
     '无法确认结果时如实说明，不要假装成功。',
+    '"已验证"只代表页面确实发生了变化，不代表业务成功：若页面反馈显示操作被拒绝或出错（如错误提示文案），在 finish 里如实说明并把 goalMet 置 false。',
   ].join('\n');
 }
 

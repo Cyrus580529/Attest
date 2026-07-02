@@ -43,7 +43,8 @@ export async function* runProgramLoop(deps: LoopDeps, userMessage: string): Asyn
     let done = false;
     for (const call of turn.toolCalls) {
       if (call.name === 'finish') {
-        yield programFinish(ledger, String(call.arguments.answer ?? '').trim());
+        const claim = call.arguments.goalMet === false ? { goalMet: false } : undefined;
+        yield programFinish(ledger, String(call.arguments.answer ?? '').trim(), false, claim);
         return;
       }
       if (call.name === 'runProgram') {
@@ -74,12 +75,15 @@ export async function* runProgramLoop(deps: LoopDeps, userMessage: string): Asyn
         messages.push({
           role: 'user',
           content:
-            '请基于上面的真实结果，用一两句话给用户准确的最终回答（调用 finish）。绝不要声称被取消或未验证的动作已完成。',
+            '请基于上面的真实结果，用一两句话给用户准确的最终回答（调用 finish）。绝不要声称被取消或未验证的动作已完成。' +
+            '若页面可见文本显示操作在业务上失败或被拒绝，把 goalMet 置 false 并如实说明。',
         });
         const reflect = await llm.step(messages, [FINISH_TOOL]);
         const reflectCall = reflect.toolCalls.find((c) => c.name === 'finish');
         const reflectAnswer = (reflectCall ? String(reflectCall.arguments.answer ?? '') : reflect.content).trim();
-        const fin = programFinish(ledger, reflectAnswer || result.answer.trim() || '（程序已执行）', result.aborted);
+        // 复盘可申报 goalMet:false（页面反馈显示业务失败）→ 降级为 failed，业务失败的程序随之不入配方库。
+        const claim = reflectCall?.arguments.goalMet === false ? { goalMet: false } : undefined;
+        const fin = programFinish(ledger, reflectAnswer || result.answer.trim() || '（程序已执行）', result.aborted, claim);
         // 录制：只在程序真正 completed 且未 abort 时入库——partial/cancelled/failed 不背书为可复用配方。
         if (recipes && fin.type === 'finish' && fin.outcome === 'completed' && !result.aborted) {
           recipes.record(recipeSignature, { program, goal: userMessage, recordedAt: Date.now() });

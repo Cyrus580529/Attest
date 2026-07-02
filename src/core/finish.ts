@@ -1,12 +1,12 @@
 import type { LedgerEntry, Outcome } from '../honesty/types';
 import { Ledger } from '../honesty/ledger';
-import { guardFinish } from '../honesty/narrationGuard';
+import { guardFinish, type FinishClaim } from '../honesty/narrationGuard';
 import type { Recipe } from '../memory/recipeBook';
 import type { AgentStep } from './loopTypes';
 
 /** 读循环收尾：用 narrationGuard 按账本守卫 answer/outcome，绝不替模型自述背书。 */
-export function finishStep(answer: string, ledger: Ledger): AgentStep {
-  const guarded = guardFinish(answer.trim(), ledger.entries);
+export function finishStep(answer: string, ledger: Ledger, claim?: FinishClaim): AgentStep {
+  const guarded = guardFinish(answer.trim(), ledger.entries, claim);
   return { type: 'finish', answer: guarded.answer, outcome: guarded.outcome, ledger: ledger.toJSON() };
 }
 
@@ -63,7 +63,7 @@ export function formatRecipes(recipes: Recipe[]): string {
  * - 空账本＝这回合没经任何工具干活 → 加注“未执行任何动作”（堵空账本谎报）。
  * - 有成功写但也有被拒授权＝部分完成 → outcome=partial（堵“部分取消却报全部完成”的谎报）。
  */
-export function programFinish(ledger: Ledger, answer: string, aborted = false): AgentStep {
+export function programFinish(ledger: Ledger, answer: string, aborted = false, claim?: FinishClaim): AgentStep {
   const entries = ledger.entries;
   const verified = entries.filter((e) => e.kind === 'write' && e.verified).length;
   const unverified = entries.filter((e) => e.kind === 'write' && !e.verified).length;
@@ -75,6 +75,9 @@ export function programFinish(ledger: Ledger, answer: string, aborted = false): 
   else if (cancelled > 0) outcome = 'cancelled';
   else outcome = 'completed';
   if (aborted && (outcome === 'completed' || outcome === 'partial')) outcome = 'failed';
+  // 自评降级（只降不升）：complete 但模型读到页面业务失败 → failed。partial/cancelled 已含更精确原因，不覆盖。
+  // 连带守住配方库：outcome≠completed 的程序不会被录成"成功配方"（调用方按 outcome 把关）。
+  if (claim?.goalMet === false && outcome === 'completed') outcome = 'failed';
 
   const notes: string[] = [];
   if (entries.length === 0) {
