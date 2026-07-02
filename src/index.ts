@@ -52,6 +52,7 @@ export type { Recipe } from './memory/recipeBook';
 
 // ── 投机执行（谱系②世界模型 opt-in；预测原语类型）——先验注入，LLM 仍主导 ──
 export { WorldModel } from './memory/worldModel';
+export type { DriftEvent, PriorLookup, WorldModelJSON } from './memory/worldModel';
 export type { Prediction } from './core/speculation/prediction';
 
 // ── 诚实层：检视 AgentStep 结果所需的类型 ──

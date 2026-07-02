@@ -80,13 +80,19 @@ export async function processCall(
       value,
       args,
     });
-    // 世界模型：验证写即学 (签名, 名) → diff——纯从证据，作为下次同页任务的先验（LLM 仍主导）。
-    if (worldModel && wr.verified && wr.evidence && wr.evidence.length > 0) {
+    // 世界模型：每次真正执行的写（含"执行了但无变化"）都在此刻写时裁定——
+    // 验证写学正先验，无变化记负样本/落空；连续落空即判漂移，作为 drift step 上报。
+    if (worldModel && wr.evidence !== undefined) {
       const node =
         name === 'setControl'
           ? before.controls.find((c) => c.ref.id === refId)
           : before.actions.find((a) => a.ref.id === refId);
-      if (node) worldModel.learn(before, node.name, { changed: true, details: wr.evidence });
+      if (node) {
+        worldModel.learn(before, node.name, { changed: wr.verified, details: wr.evidence });
+        for (const d of worldModel.drainDrift()) {
+          wr.steps.push({ type: 'drift', tool: name, refId, expected: d.expected, observed: d.observed });
+        }
+      }
     }
     return { steps: wr.steps, toolResult: wr.toolResult };
   }
@@ -95,15 +101,27 @@ export async function processCall(
   return { steps: [{ type: 'error', tool: name, error: `unknown tool "${name}"` }], toolResult: 'ERROR: unknown tool' };
 }
 
-/** 世界模型先验：把当前页可见动作的「已知可观察效果」拼成提示，帮模型规划/写 predict（不旁路模型）。 */
+/**
+ * 世界模型先验：把当前页可见动作的「已知可观察效果」拼成提示，帮模型规划/写 predict（不旁路模型）。
+ * 分级注入（授权输出）：active 原样；suspect 带警示（最近一次未按已知效果发生）；
+ * 负先验（≥2 次确认无效果）明示勿依赖——先验不只说哪条路通，也说哪条路死。
+ */
 function worldModelPrior(deps: LoopDeps): string {
   const { worldModel, host } = deps;
   if (!worldModel) return '';
   const snap = host.snapshot();
-  const lines = snap.actions
-    .map((a) => ({ name: a.name, p: worldModel.predict(snap, a.name) }))
-    .filter((x) => x.p)
-    .map((x) => `- ${x.name} → 预期变化: ${x.p!.expectDetails.join('; ')}`);
+  const lines: string[] = [];
+  for (const a of snap.actions) {
+    const p = worldModel.lookup(snap, a.name);
+    if (p) {
+      const caveat = p.status === 'suspect' ? '（注意：最近一次未按此效果发生，先验证再依赖）' : '';
+      lines.push(`- ${a.name} → 预期变化: ${p.details.join('; ')}${caveat}`);
+      continue;
+    }
+    if (worldModel.noEffectCount(snap, a.name) >= 2) {
+      lines.push(`- ${a.name} → 已知多次执行均无可观察变化，勿依赖它达成效果`);
+    }
+  }
   return lines.length > 0
     ? `\n\n（已知动作效果，可用于规划与 predict；仍以实际验证为准）\n${lines.join('\n')}`
     : '';

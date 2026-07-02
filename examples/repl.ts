@@ -98,6 +98,12 @@ function show(s: Record<string, unknown>): void {
     console.log(`  \x1b[33m⚡lookahead\x1b[0m ${String(s.tool)} 预测${hit}`);
   } else if (t === 'mispredict') {
     console.log(`  \x1b[33m↻ 预测落空，回模型重规划\x1b[0m`);
+  } else if (t === 'drift') {
+    const obs =
+      Array.isArray(s.observed) && (s.observed as string[]).length > 0
+        ? (s.observed as string[]).join('; ')
+        : '（无任何可观察效果）';
+    console.log(`  \x1b[35m⚠ 页面行为漂移\x1b[0m ${String(s.refId ?? s.tool)}：已知效果连续未复现，现在是 ${obs}（先验已自愈）`);
   } else if (t === 'observation') {
     const what = s.tool === 'openObject' ? '已打开' : s.tool === 'readSurface' ? '已查看' : '已观察';
     console.log(`  \x1b[2m▸ ${what}\x1b[0m`);

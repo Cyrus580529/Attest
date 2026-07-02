@@ -13,6 +13,8 @@ export type AgentStep =
   | { type: 'replay'; tool: string; refId?: string }
   | { type: 'speculate'; tool: string; refId?: string; hit: boolean }
   | { type: 'mispredict'; tool: string; refId?: string; expected: string[]; actual: string[] }
+  /** 世界模型判定页面行为漂移：已知动作连续未按已知效果发生（observed 空 = 不再有任何效果）。 */
+  | { type: 'drift'; tool: string; refId?: string; expected: string[]; observed: string[] }
   | { type: 'thinking'; text: string }
   | { type: 'plan'; items: string[] }
   | { type: 'error'; tool: string; refId?: string; error: string }
