@@ -20,20 +20,13 @@
     <!-- ══ 左：真实工作台（agent 驱动的就是这块 DOM）══ -->
     <section class="workbench" id="workbench" aria-label="工单工作台">
       <div class="bench-head">
-        <h2>工单工作台</h2>
-        <p class="bench-sub">这是一张实现 <code>data-agent-*</code> 契约的活页面</p>
+        <h2>客服运营工作台</h2>
+        <p class="bench-sub">这是一套实现 <code>data-agent-*</code> 契约的活页面：工单 / 客户 / 报表</p>
       </div>
 
-      <ul class="tickets" id="ticket-list"></ul>
-
-      <section class="surface-card" data-agent-surface="detail" id="detail">选择一个工单查看详情。</section>
+      <nav class="bench-tabs" id="bench-tabs"></nav>
+      <div id="view"></div>
       <section class="surface-strip" data-agent-surface="status" id="status">就绪。</section>
-
-      <div class="bench-actions">
-        <button data-agent-action="resolve" data-agent-risk="high" id="btn-resolve">解决当前工单</button>
-        <button data-agent-action="archive" id="btn-archive">归档看板</button>
-        <button data-agent-action="clear_all" data-agent-risk="high" id="btn-clear" class="danger">清空全部</button>
-      </div>
     </section>
 
     <!-- ══ 右：证据记录仪 ══ -->

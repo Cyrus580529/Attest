@@ -73,6 +73,67 @@ body {
 .bench-sub { color: #8a8272; font-size: 0.85rem; margin-top: 0.2rem; }
 .bench-sub code { font-family: var(--mono); font-size: 0.78rem; background: #eee7d8; padding: 0 0.3em; }
 
+/* 账本页签 */
+.bench-tabs { display: flex; gap: 0.35rem; margin: 1.2rem 0 0; }
+.bench-tabs span {
+  font-size: 0.88rem;
+  padding: 0.3rem 1.1rem 0.25rem;
+  border: 1px solid #b8ad94;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: #eee7d8;
+  cursor: pointer;
+  color: #8a8272;
+}
+.bench-tabs span.on { background: #fffdf6; color: #33302a; font-weight: 600; box-shadow: 0 -2px 0 var(--paper-red) inset; }
+#view { border-top: 1px solid #b8ad94; padding-top: 0.9rem; }
+
+/* 优先级章 */
+.t-pri { font-family: var(--mono); font-size: 0.66rem; padding: 0.1em 0.45em; border-radius: 2px; }
+.t-pri.p高 { color: #fff; background: var(--paper-red); }
+.t-pri.p中 { color: #8a6a15; border: 1px solid #c9a53f; }
+.t-pri.p低 { color: #9a917e; border: 1px solid #cfc6b0; }
+
+/* 分页 */
+.pager { display: flex; align-items: center; gap: 0.7rem; margin: 0.5rem 0 1rem; font-size: 0.85rem; color: #8a8272; }
+.pager button {
+  font-family: var(--serif); font-size: 0.82rem; padding: 0.2rem 0.7rem;
+  background: #fffdf6; border: 1px solid #b8ad94; cursor: pointer; box-shadow: 1px 1px 0 rgba(0,0,0,0.1);
+}
+.pager button:disabled { opacity: 0.4; cursor: default; }
+
+/* 公告（注入彩蛋钉在纸上） */
+.notice {
+  margin: 0.9rem 0;
+  padding: 0.7rem 0.9rem;
+  background: #fff8dc;
+  border: 1px solid #d9c98a;
+  font-size: 0.8rem;
+  color: #6d6019;
+  transform: rotate(-0.4deg);
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.08);
+}
+.notice::before { content: '📌 '; }
+
+/* 客户卡 */
+.custs { list-style: none; margin: 0.4rem 0 1rem; padding: 0; }
+.custs li {
+  display: flex; align-items: baseline; gap: 0.8rem;
+  padding: 0.5rem 0.6rem; cursor: pointer;
+  border-left: 3px solid transparent;
+}
+.custs li:hover { background: rgba(192, 74, 58, 0.06); }
+.custs li.selected { border-left-color: var(--paper-red); background: rgba(192, 74, 58, 0.08); }
+.c-balance { font-family: var(--mono); font-size: 0.78rem; color: #8a8272; margin-left: auto; }
+
+/* 表单行（退款/报表） */
+.field-row { display: flex; align-items: center; gap: 0.7rem; margin: 0.9rem 0; }
+.field-row label { font-size: 0.88rem; color: #6d6552; }
+.field-row input {
+  font-family: var(--mono); font-size: 0.9rem; width: 8em;
+  padding: 0.3rem 0.5rem; border: 1px solid #b8ad94; background: #fffdf6;
+}
+
 .tickets { list-style: none; margin: 1.4rem 0; padding: 0; }
 .tickets li {
   display: flex;
