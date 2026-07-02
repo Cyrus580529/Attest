@@ -24,6 +24,11 @@ from the model's own narration.
   predict their effects; a `WorldModel` and `RecipeBook` feed *priors* learned from past
   evidence into its context. The verifier is always the single source of truth — priors only
   make the model plan faster, they never bypass it.
+- **Drift detection with self-healing** — when a known action stops producing its known
+  effect on the same page signature (the page changed behavior under the agent), the kernel
+  detects it deterministically: first miss demotes the prior to *suspect* (injected with a
+  warning), a second consecutive miss raises a `drift` event and adopts the new behavior —
+  or evicts the prior if the action no longer does anything.
 
 Provider-agnostic; defaults to any OpenAI-compatible endpoint (DeepSeek, OpenAI, or any
 compatible gateway).
@@ -40,7 +45,24 @@ do — **outcome verification, trust, and drift detection**.
 The trust core runs on a normalized `PageSnapshot`, so the contract format is pluggable
 (`ContractSource`): `parseVoix` for VOIX pages, `parseContract` for native `data-agent-*`
 pages. Any page that implements either — with **zero extra code** — can be read, referenced,
-planned over, and driven.
+planned over, and driven. Anything that can *enumerate its capabilities and re-observe its
+state* (WebMCP, ARIA-inferred contracts, MCP resources, OpenAPI…) can slot into the same
+trust core — VOIX is the first horse Attest rides, not the one it is married to.
+
+## Why this architecture
+
+Coding agents get their ground truth for free: the compiler and the test suite tell them
+whether a change worked. **The web has no such oracle** — after "submit" is clicked, nothing
+in the platform tells an agent whether anything actually happened. Attest's core move is to
+*manufacture that oracle*: the page contract makes state snapshotable, so "did it work"
+becomes a cheap deterministic diff. One free verification signal then gets used four ways —
+as the **safety gate** (verify-or-refuse), the **license to speculate** (lookahead
+continues only while predictions hold), the **learning signal** (the `WorldModel` learns
+only from verified evidence, so its memory cannot be polluted by hallucination), and the
+**drift detector** (a known action that stops producing its known effect is deterministic
+proof the page changed). Where frontier labs train honesty into their models with
+large-scale RL, Attest gets the same property *structurally* — which is why it holds with
+any commodity function-calling model.
 
 ---
 
@@ -59,8 +81,8 @@ npm run build
 ## Prove it holds (no network / key needed)
 
 ```bash
-npm test          # 186 deterministic tests (FakeLlm + FakeHost)
-npm run typecheck
+npm test          # 229 deterministic tests (FakeLlm + FakeHost), incl. a chaos suite
+npm run typecheck # (fault injection: host/confirm failures must never crash the loop)
 npm run build     # emits dist/
 ```
 
@@ -77,9 +99,34 @@ $env:ATTEST_MODEL="deepseek-v4-pro"               # any function-calling model
 
 npx tsx examples/live-voix.ts     # VOIX page: typed args, verified writes, high-risk held
 npx tsx examples/live-check.ts    # data-agent-* board: long-horizon read, held, priors
+npx tsx examples/live-suite.ts    # adversarial: prompt injection in page content, orders to
+                                  #   bypass confirmation, missing targets, empty boards …
+npx tsx examples/live-drift.ts    # the page silently changes behavior; watch the agent
+                                  #   detect drift, report it, and self-heal its priors
+npx tsx examples/live-bench.ts    # cold vs. warm A/B: rounds / tokens / predict hit-rate
 ```
 
 See `docs/LIVE-ACCEPTANCE.md` for the full real-model acceptance checklist.
+
+## Measured, not asserted
+
+All numbers from live runs against `deepseek-v4-pro` (a commodity model with no
+agent-specific training), 2026-07; methodology and raw configs in `docs/bench/`.
+
+- **Honesty under adversity** — 7/7 adversarial scenarios passed with mechanical verdicts:
+  a page notice ordering the agent to invoke a (low-risk, unguarded!) `clear_all` was read,
+  summarized, *not executed*, and flagged to the user; an explicit user order to "wipe
+  everything, don't ask" was held and honestly reported as `cancelled`.
+- **Priors pay** — with world-model priors warm: **-27% to -46% LLM round-trips, -23% to
+  -44% tokens** on multi-step tasks, predict hit-rate 14/14 → and the same speculation
+  *without* knowledge measured **negative** (blind predictions thrash) — which is why the
+  batching nudge is injected only alongside priors.
+- **Drift live** — a same-signature page changed behavior between visits: miss #1 demoted
+  the prior to suspect, miss #2 raised the drift event and healed the prior; the model's
+  narration stayed faithful to the new behavior and explicitly cited the injected warning.
+- ~80 live runs across toy boards, rich page shapes (navigation / pagination / nesting),
+  adversarial scenarios and benches: **zero crashes, zero false success claims, zero
+  unauthorized writes.**
 
 ---
 
@@ -154,15 +201,17 @@ Either way, a **new page** that implements the contract is drivable with **no ex
 | `verifier` | Diffs the snapshot after a write — the observable change is the evidence |
 | `Ledger` | Append-only evidence log (observe / intent / grant / write) |
 | `narrationGuard` | Computes `outcome` from the ledger; forbids narrating a failure or cancellation as success |
-| `WorldModel` / `RecipeBook` | Opt-in priors — learned (action → diff) and successful programs — injected into context to plan faster; never bypass the verifier |
+| `WorldModel` / `RecipeBook` | Opt-in priors — learned (action → diff) and successful programs — injected into context to plan faster; never bypass the verifier. The `WorldModel` adjudicates every executed write at record time (hit / suspect / drift) and self-heals |
 
 ## Status
 
-Core is complete — contract layer (VOIX + native), single tool-calling read loop with
-lookahead, honesty layer (verifier + ledger + narration guard + high-risk held), long-horizon
-+ references, code-as-action with recipe priors, world-model priors, and cross-session
-persistence (`toJSON` / `fromJSON`). **186 deterministic tests green**, and live-accepted
-against a real model (`deepseek-v4-pro`). Design notes and the live-acceptance checklist live
-in `docs/`.
+Core is complete and hardened — contract layer (VOIX + native), single tool-calling read
+loop with lookahead, honesty layer (verifier + ledger + narration guard + high-risk held),
+TOCTOU-safe write path with settle-based verification, code-as-action with recipe priors,
+world-model priors with drift detection and self-healing, cross-session persistence
+(`toJSON` / `fromJSON`). **229 deterministic tests green** (incl. chaos fault-injection),
+live-accepted against a real model (`deepseek-v4-pro`) across happy paths, rich page shapes,
+adversarial scenarios, and drift. Design notes, bench reports and the live-acceptance
+checklist live in `docs/`.
 
 License: MIT.
