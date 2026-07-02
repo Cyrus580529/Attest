@@ -18,7 +18,22 @@ export type AgentStep =
   | { type: 'thinking'; text: string }
   | { type: 'plan'; items: string[] }
   | { type: 'error'; tool: string; refId?: string; error: string }
-  | { type: 'finish'; answer: string; outcome: Outcome; ledger: LedgerEntry[] };
+  /**
+   * 收尾：facts 由账本硬生成（模型碰不到）；narration 是模型原话（一字不改，不审查）；
+   * answer = narration + 执行记录（兼容单字符串消费方）。机制是并列对照，不是消音。
+   */
+  | { type: 'finish'; facts: FinishFacts; narration: string; answer: string; outcome: Outcome; ledger: LedgerEntry[] };
+
+/** 执行事实的权威版本——由证据账本生成，是叙述层的 verify-or-refuse。 */
+export interface FinishFacts {
+  outcome: Outcome;
+  verified: { tool: string; refId: string; evidence: string[] }[];
+  unverified: { tool: string; refId: string }[];
+  cancelled: { refId: string; label?: string }[];
+  writeErrors: { tool: string; detail: string }[];
+  /** 人话骨架，由上述明细生成；answer 里以"执行记录"出现。 */
+  summary: string;
+}
 
 /** 两个 loop（read / program）共享的运行上下文——createAgent 解析后显式传入。 */
 export interface LoopDeps {

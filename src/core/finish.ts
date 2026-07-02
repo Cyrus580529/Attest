@@ -1,13 +1,71 @@
 import type { LedgerEntry, Outcome } from '../honesty/types';
 import { Ledger } from '../honesty/ledger';
-import { guardFinish, type FinishClaim } from '../honesty/narrationGuard';
+import { computeOutcome } from '../honesty/ledger';
+import { applyClaim, type FinishClaim } from '../honesty/narrationGuard';
 import type { Recipe } from '../memory/recipeBook';
-import type { AgentStep } from './loopTypes';
+import type { AgentStep, FinishFacts } from './loopTypes';
 
-/** 读循环收尾：用 narrationGuard 按账本守卫 answer/outcome，绝不替模型自述背书。 */
-export function finishStep(answer: string, ledger: Ledger, claim?: FinishClaim): AgentStep {
-  const guarded = guardFinish(answer.trim(), ledger.entries, claim);
-  return { type: 'finish', answer: guarded.answer, outcome: guarded.outcome, ledger: ledger.toJSON() };
+const WRITE_TOOL_NAMES = new Set(['setControl', 'invokeAction']);
+
+/**
+ * 执行事实的权威版本，由账本硬生成——叙述层的 verify-or-refuse。
+ * 不计算 outcome（读循环/程序模式各有规则，红线：判定逻辑不因叙述改动），只吃算好的结果。
+ */
+export function buildFacts(entries: readonly LedgerEntry[], outcome: Outcome): FinishFacts {
+  const verified: FinishFacts['verified'] = [];
+  const unverified: FinishFacts['unverified'] = [];
+  const cancelled: FinishFacts['cancelled'] = [];
+  const writeErrors: FinishFacts['writeErrors'] = [];
+  const intentLabels = new Map<string, string>();
+
+  for (const e of entries) {
+    if (e.kind === 'intent') intentLabels.set(e.refId, e.label);
+    else if (e.kind === 'write') {
+      if (e.verified) verified.push({ tool: e.tool, refId: e.refId, evidence: e.evidence });
+      else unverified.push({ tool: e.tool, refId: e.refId });
+    } else if (e.kind === 'grant' && !e.approved) {
+      cancelled.push({ refId: e.refId, label: intentLabels.get(e.refId) });
+    } else if (e.kind === 'error' && WRITE_TOOL_NAMES.has(e.tool)) {
+      writeErrors.push({ tool: e.tool, detail: e.detail });
+    }
+  }
+
+  const lines: string[] = [];
+  if (verified.length > 0) lines.push(`成功执行并验证 ${verified.length} 个动作`);
+  if (cancelled.length > 0) lines.push(`${cancelled.length} 个高风险操作未获确认、未执行`);
+  if (unverified.length > 0)
+    lines.push(`${unverified.length} 个动作未能确认完成（执行后未检测到可观察变化，≠失败）`);
+  if (writeErrors.length > 0) lines.push(`${writeErrors.length} 个写操作出错未执行`);
+
+  const summary =
+    entries.length === 0
+      ? '没有执行任何动作，以上仅为直接作答'
+      : lines.length > 0
+        ? lines.join('；')
+        : '仅读取了页面，未执行写操作';
+
+  return { outcome, verified, unverified, cancelled, writeErrors, summary };
+}
+
+/** answer 兼容拼接：narration（模型原话，在前）+ 执行记录（账本生成，在后）。 */
+function composeAnswer(narration: string, facts: FinishFacts): string {
+  const record = `（执行记录：${facts.summary}。）`;
+  return narration ? `${narration}\n${record}` : record;
+}
+
+/** 读循环收尾：outcome 由账本算 + 自评只降不升；facts 由账本生成；narration 一字不改。 */
+export function finishStep(narration: string, ledger: Ledger, claim?: FinishClaim): AgentStep {
+  const outcome = applyClaim(computeOutcome(ledger.entries), claim);
+  const facts = buildFacts(ledger.entries, outcome);
+  const text = narration.trim();
+  return {
+    type: 'finish',
+    facts,
+    narration: text,
+    answer: composeAnswer(text, facts),
+    outcome,
+    ledger: ledger.toJSON(),
+  };
 }
 
 /** 从证据账本拼出“真实发生了什么”的事实陈述，喂给复盘回合（不可被模型篡改）。 */
@@ -59,11 +117,11 @@ export function formatRecipes(recipes: Recipe[]): string {
 }
 
 /**
- * 程序模式收尾：outcome 与证据小结全由账本算，绝不替模型自述背书（defense-in-depth）。
- * - 空账本＝这回合没经任何工具干活 → 加注“未执行任何动作”（堵空账本谎报）。
+ * 程序模式收尾：outcome 与 facts 全由账本算，绝不替模型自述背书（defense-in-depth）。
  * - 有成功写但也有被拒授权＝部分完成 → outcome=partial（堵“部分取消却报全部完成”的谎报）。
+ * - 空账本＝这回合没经任何工具干活 → facts.summary 明示“没有执行任何动作”（堵空账本谎报）。
  */
-export function programFinish(ledger: Ledger, answer: string, aborted = false, claim?: FinishClaim): AgentStep {
+export function programFinish(ledger: Ledger, narration: string, aborted = false, claim?: FinishClaim): AgentStep {
   const entries = ledger.entries;
   const verified = entries.filter((e) => e.kind === 'write' && e.verified).length;
   const unverified = entries.filter((e) => e.kind === 'write' && !e.verified).length;
@@ -75,21 +133,18 @@ export function programFinish(ledger: Ledger, answer: string, aborted = false, c
   else if (cancelled > 0) outcome = 'cancelled';
   else outcome = 'completed';
   if (aborted && (outcome === 'completed' || outcome === 'partial')) outcome = 'failed';
-  // 自评降级（只降不升）：complete 但模型读到页面业务失败 → failed。partial/cancelled 已含更精确原因，不覆盖。
+  // 自评降级（只降不升）：partial/cancelled 已含更精确原因，不覆盖。
   // 连带守住配方库：outcome≠completed 的程序不会被录成"成功配方"（调用方按 outcome 把关）。
-  if (claim?.goalMet === false && outcome === 'completed') outcome = 'failed';
+  outcome = applyClaim(outcome, claim);
 
-  const notes: string[] = [];
-  if (entries.length === 0) {
-    notes.push('本回合未经任何工具操作或读取页面，未执行任何动作，以上仅为直接作答；不要据此认为相关任务已完成');
-  } else {
-    const tally: string[] = [];
-    if (verified > 0) tally.push(`成功 ${verified} 项`);
-    if (cancelled > 0) tally.push(`取消 ${cancelled} 项`);
-    if (unverified > 0) tally.push(`未验证 ${unverified} 项`);
-    if (tally.length > 0) notes.push(`实际：${tally.join('·')}`);
-    if (cancelled > 0) notes.push('有动作被你取消，未全部完成');
-  }
-  const finalAnswer = notes.length > 0 ? `${answer}\n（注意：${notes.join('；')}。）`.trim() : answer;
-  return { type: 'finish', answer: finalAnswer, outcome, ledger: ledger.toJSON() };
+  const facts = buildFacts(entries, outcome);
+  const text = narration.trim();
+  return {
+    type: 'finish',
+    facts,
+    narration: text,
+    answer: composeAnswer(text, facts),
+    outcome,
+    ledger: ledger.toJSON(),
+  };
 }

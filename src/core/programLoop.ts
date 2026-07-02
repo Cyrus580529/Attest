@@ -76,7 +76,8 @@ export async function* runProgramLoop(deps: LoopDeps, userMessage: string): Asyn
           role: 'user',
           content:
             '请基于上面的真实结果，用一两句话给用户准确的最终回答（调用 finish）。绝不要声称被取消或未验证的动作已完成。' +
-            '若页面可见文本显示操作在业务上失败或被拒绝，把 goalMet 置 false 并如实说明。',
+            '若页面可见文本显示操作在业务上失败或被拒绝，把 goalMet 置 false 并如实说明。' +
+            '执行统计不必复述——系统会自动附上账本生成的执行记录。',
         });
         const reflect = await llm.step(messages, [FINISH_TOOL]);
         const reflectCall = reflect.toolCalls.find((c) => c.name === 'finish');

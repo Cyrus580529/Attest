@@ -37,7 +37,7 @@ export type { OpenAiAdapterOptions } from './llm/openaiAdapter';
 
 // ── 内核：创建并驱动 agent ──
 export { createAgent } from './core/loop';
-export type { AgentStep, AgentOptions } from './core/loop';
+export type { AgentStep, AgentOptions, FinishFacts } from './core/loop';
 export { serializeSnapshot } from './core/serialize';
 
 // ── Code-as-Action：构造 / 校验 / 执行程序 ──

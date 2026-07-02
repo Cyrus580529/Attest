@@ -125,7 +125,7 @@ describe('loop code-as-action (codeAsAction)', () => {
     const host = new FakeHostAdapter(build(`<button data-agent-action="resolve" data-agent-risk="high">R</button>`));
     const steps = await collect(createAgent({ llm, host, codeAsAction: true }).run('把工单全部标记为已解决'));
     const finish = steps.at(-1);
-    expect(finish?.type === 'finish' && finish.answer).toContain('未执行任何动作');
+    expect(finish?.type === 'finish' && finish.answer).toContain('没有执行任何动作');
   });
 
   it('真正经程序执行的写不被误加注', async () => {
@@ -165,7 +165,7 @@ describe('loop code-as-action (codeAsAction)', () => {
     const steps = await collect(createAgent({ llm, host, codeAsAction: true, confirm }).run('全部解决'));
     const finish = steps.at(-1);
     expect(finish?.type === 'finish' && finish.outcome).toBe('partial');
-    expect(finish?.type === 'finish' && finish.answer).toContain('取消');
+    expect(finish?.type === 'finish' && finish.answer).toContain('未获确认');
   });
 
   it('渐进披露：播种对大对象集只给轮廓（省 token），不逐个塞', async () => {

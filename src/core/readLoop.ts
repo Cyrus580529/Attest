@@ -7,7 +7,6 @@ import { resolveRef } from './refResolver';
 import { serializeSnapshot } from './serialize';
 import { executeWrite } from './execWrite';
 import { Ledger } from '../honesty/ledger';
-import { guardFinish } from '../honesty/narrationGuard';
 import type { WorldModel } from '../memory/worldModel';
 import { genericExpectation } from '../memory/worldModel';
 import { pageSignature } from '../memory/pageSignature';
@@ -182,7 +181,7 @@ export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGe
     const responded = new Set<string>();
     for (const call of turn.toolCalls) {
       if (call.name === 'finish') {
-        // 自评降级通道：goalMet:false = 模型申报"页面反馈显示业务失败"。只降不升（guardFinish 保证）。
+        // 自评降级通道：goalMet:false = 模型申报"页面反馈显示业务失败"。只降不升（applyClaim 保证）。
         const claim = call.arguments.goalMet === false ? { goalMet: false } : undefined;
         yield finishStep(String(call.arguments.answer ?? '').trim(), ledger, claim);
         finished = true;
@@ -248,11 +247,6 @@ export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGe
     }
   }
 
-  const guarded = guardFinish('我没能在限定步数内完成这个任务，没有可确认的结果。', ledger.entries);
-  yield {
-    type: 'finish',
-    answer: guarded.answer,
-    outcome: guarded.outcome === 'completed' ? 'failed' : guarded.outcome,
-    ledger: ledger.toJSON(),
-  };
+  // 步数耗尽＝目标未达成：走同一条自评降级通道（completed→failed，cancelled 保持更精确原因）。
+  yield finishStep('我没能在限定步数内完成这个任务，没有可确认的结果。', ledger, { goalMet: false });
 }

@@ -30,7 +30,7 @@ describe('read loop', () => {
 
     expect(steps[0]).toMatchObject({ type: 'observation', tool: 'observePage' });
     expect(steps[0]?.type === 'observation' && steps[0].result).toContain('登录任务');
-    expect(steps.at(-1)).toMatchObject({ type: 'finish', answer: '当前有 1 个任务：登录任务', outcome: 'completed' });
+    expect(steps.at(-1)).toMatchObject({ type: 'finish', narration: '当前有 1 个任务：登录任务', outcome: 'completed' });
   });
 
   it('非法 ref → error step，且不执行 host', async () => {
@@ -64,7 +64,7 @@ describe('read loop', () => {
     const host = new FakeHostAdapter(listSnap());
     const steps = await collect(createAgent({ llm, host }).run('你好'));
     expect(steps).toHaveLength(1);
-    expect(steps[0]).toMatchObject({ type: 'finish', answer: '你好，我能帮你查看任务。', outcome: 'completed' });
+    expect(steps[0]).toMatchObject({ type: 'finish', narration: '你好，我能帮你查看任务。', outcome: 'completed' });
   });
 
   it('超过 maxSteps → 诚实的 failed 终答', async () => {

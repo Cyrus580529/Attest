@@ -9,7 +9,7 @@ import { runReadLoop } from './readLoop';
 import { runProgramLoop } from './programLoop';
 import type { AgentStep, LoopDeps } from './loopTypes';
 
-export type { AgentStep } from './loopTypes';
+export type { AgentStep, FinishFacts } from './loopTypes';
 
 export interface AgentOptions {
   llm: LlmAdapter;

@@ -22,7 +22,12 @@ export const FINISH_TOOL: ToolSchema = {
   parameters: {
     type: 'object',
     properties: {
-      answer: { type: 'string', description: '给用户的最终回答' },
+      answer: {
+        type: 'string',
+        description:
+          '给用户的最终回答：专注回答问题、转述你读到的内容、给出你的判断。' +
+          '系统会自动附上由证据账本生成的执行记录，你不必逐项复述执行统计。',
+      },
       goalMet: {
         type: 'boolean',
         description:
