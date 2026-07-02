@@ -81,6 +81,8 @@ npx vitest run test/live   # 脚本化 live 场景
 
 **切片16 自评降级通道 goalMet（外部评审响应，2026-07-02）**（代码完成，确定性 234 绿，**待真模型 live 验收**——`examples/live-goalmet.ts` 已备好，缺 `ATTEST_API_KEY`）：codex 评审点出的真洞——**diff 证明"有效果"不证明"业务成功"**：写后页面弹错误文案（"余额不足"）也是可验证变化，`computeOutcome` 会记 completed，且业务失败的程序会被录成"成功配方"污染先验。修法纯加严：`FINISH_TOOL` 加可选 `goalMet`，`guardFinish`/`programFinish` 只许 completed→failed **降级、绝不升级**（红线3 的本意是防谎报成功——账本仍是声明上限，自述只能更保守，是补完不是放松）；读循环+程序复盘两处接线；系统提示明示"已验证≠业务成功"；配方库随 outcome 把关自动不录业务失败程序。顺带修掉：miniBoard 测试注入 happy-dom 前剥 `<script>`（止 ECONNREFUSED stderr 噪音）；README 措辞收窄（"complete and hardened"→有界表述、"cannot lie" 加"账本是上限非业务 oracle"界定）；`.github/workflows/ci.yml` 就位（推远程即生效）。
 
+**切片17 叙述原则化（2026-07-02）**（代码完成，确定性 240 绿，**待真模型 live 验收**——与切片16 同批等 key）：开放线4 兑现，把 verify-or-refuse 推广到叙述层。finish step 拆 `facts`（账本硬生成：verified/unverified/cancelled/writeErrors 明细 + summary 骨架）+ `narration`（模型原话）+ `answer`（兼容拼接）。**红线3 从"守卫"升级为"生成"**：outcome 计算逻辑一行未动，变的只是谁陈述事实。**用户定调的自由度原则**：narration 一字不改不审查不重写；prompt 告知不禁令（"系统会附执行记录，不必复述统计"）；机制=并列对照非消音——模型说错了，旁边的事实块自动拆穿。guardFinish 退役（caveat 成为 facts.summary 常规组成），narrationGuard 缩为 `applyClaim`（goalMet 只降不升）；facts 即未来可视 demo 证据面板的数据源。设计 `docs/specs/2026-07-02-attest-slice17-principled-narration-design.md`。
+
 **真模型验收脚本**：`examples/live-check.ts`（玩具看板 S1/S2/S3）、`examples/live-real.ts`（真实工作台 T1-T4）、`examples/live-pages.ts`（导航/分页/嵌套）、`examples/live-suite.ts`（对抗 A1-A7）、`examples/live-drift.ts`（漂移）、`examples/live-goalmet.ts`（业务失败自评降级）、`examples/live-bench.ts`（先验 A/B）。绕 happy-dom CORS 用原生 fetch；vitest 的 `test/live` 在 happy-dom 下会撞 CORS，真验收走这两个脚本。
 
 **开放线（优先级序）**：
@@ -90,7 +92,7 @@ npx vitest run test/live   # 脚本化 live 场景
 1. **量化（世界模型半边已完成，2026-07-02）**：live A/B（`examples/live-bench.ts`，报告 `docs/bench/2026-07-02-prior-lookahead-live-ab.md`）——4 组配置探索定线"批量+predict 鼓励只随先验注入"；定稿数字：暖跑回合 -8%~-27%、token 至 -23%、predict 命中 14/14、48+ 运行全 completed。**教训：无知识的投机是负收益**。**先验可迁移性三修**（泛化注入剥实例 id/matchesPrediction 对象实例宽容/换页补注，均 TDD+live 验证）：T3"产生对象"页型暖跑回合 -46%/token -44%、predict 跨实例 3/3。剩：配方（RecipeBook/程序模式）A/B 未量；跨会话读盘路径未计量；多模型。
 2. **发布工程件**：README/LICENSE/CI 文件已就位（0.1.0 发布就绪 + `.github/workflows/ci.yml`）；仍缺：远程仓库+CI 真跑、npm 发布、exports map 核验。**切片16 的 live 验收**（`live-goalmet.ts`）等 `ATTEST_API_KEY` 到位即跑。
 3. 多模型验收（现仅 deepseek-v4-pro）；更多真实页面（导航/分页/嵌套）。
-4. **叙述-诚实原则化**：结果陈述由账本生成，模型只受约束措辞（把 verify-or-refuse 推广到叙述）。
+4. ~~叙述-诚实原则化~~ **已 ship（切片17），待 live 验收**。后续可选：可视 demo（左看板+右证据账本面板，facts 直接喂饭）。
 5. `CandidateSet`/`ReferenceResolver` 接 live（已撤出导出，接进再导出）；per-object 账本；多程序重规划。
 
 ## 七、命令速查

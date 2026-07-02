@@ -88,7 +88,7 @@ npm run build
 ## Prove it holds (no network / key needed)
 
 ```bash
-npm test          # 234 deterministic tests (FakeLlm + FakeHost), incl. a chaos suite
+npm test          # 240 deterministic tests (FakeLlm + FakeHost), incl. a chaos suite
 npm run typecheck # (fault injection: host/confirm failures must never crash the loop)
 npm run build     # emits dist/
 ```
@@ -207,7 +207,8 @@ Either way, a **new page** that implements the contract is drivable with **no ex
 | `refResolver` | Verifies a `ref` exists and its kind matches; anything else is an `error`, never executed |
 | `verifier` | Diffs the snapshot after a write — the observable change is the evidence |
 | `Ledger` | Append-only evidence log (observe / intent / grant / write) |
-| `narrationGuard` | Computes `outcome` from the ledger; forbids narrating a failure or cancellation as success. The model's self-assessment (`goalMet`) can only downgrade `completed` → `failed`, never the reverse |
+| `narrationGuard` | The model's self-assessment (`goalMet`) can only downgrade `completed` → `failed`, never the reverse |
+| `FinishFacts` | The authoritative execution record, generated from the ledger — the final step carries `facts` (harness-generated, tamper-proof) *beside* `narration` (the model's own words, never edited): juxtaposition, not muzzling |
 | `WorldModel` / `RecipeBook` | Opt-in priors — learned (action → diff) and successful programs — injected into context to plan faster; never bypass the verifier. The `WorldModel` adjudicates every executed write at record time (hit / suspect / drift) and self-heals |
 
 ## Status
@@ -218,7 +219,7 @@ exists today: contract layer (VOIX + native), single tool-calling read
 loop with lookahead, honesty layer (verifier + ledger + narration guard + high-risk held),
 TOCTOU-safe write path with settle-based verification, code-as-action with recipe priors,
 world-model priors with drift detection and self-healing, cross-session persistence
-(`toJSON` / `fromJSON`). **234 deterministic tests green** (incl. chaos fault-injection),
+(`toJSON` / `fromJSON`). **240 deterministic tests green** (incl. chaos fault-injection),
 live-accepted against a real model (`deepseek-v4-pro`) across happy paths, rich page shapes,
 adversarial scenarios, and drift. Design notes, bench reports and the live-acceptance
 checklist live in `docs/`.
