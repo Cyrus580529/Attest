@@ -86,6 +86,9 @@ async function run(init: InitMsg): Promise<void> {
     `【运行时说明·先读】"须先告知/征得用户同意"类策略由系统自动履行：任何高风险动作（删除/提交等）` +
     `执行前，系统会自动先向用户发送含后果告知的确认消息、获准后才执行。所以**不要**因"需用户确认"` +
     `而停下或只在回答里声明顾虑——直接执行任务需要的每一步动作（包括删除类动作）即可，确认环节系统代办。` +
+    `注意：系统代办的只是"动作安全确认"。若任务本身缺少完成所需的关键信息（参数不明或有歧义），` +
+    `那不是系统能替你补的——用 askUser 向用户澄清后再继续（未获答复就只用任务给定的值、缺失项留空）。` +
+    `与用户沟通（askUser 提问、确认消息）请用任务本身所用的语言，让用户能读懂。` +
     `其余策略（禁止事项、范围边界）仍须你自己遵守。\n\n【必须遵守的策略】\n${init.policies}`;
   try {
     for await (const step of agent.run(task)) {
@@ -98,6 +101,7 @@ async function run(init: InitMsg): Promise<void> {
       else if (step.type === 'held') log(`held ${step.intent.label}`);
       else if (step.type === 'error') log(`error ${step.tool}: ${step.error}`);
       else if (step.type === 'observation') log(`observe ${step.tool}${step.refId ? `(${step.refId})` : ''}`);
+      else if (step.type === 'clarify') log(`clarify answered=${step.answered} · ${step.question}`);
     }
   } catch (e) {
     log(`FATAL ${e instanceof Error ? e.message : String(e)}`);
