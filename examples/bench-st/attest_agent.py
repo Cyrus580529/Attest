@@ -37,8 +37,12 @@ def answer(message):
 
 
 def slim_obs(obs):
-    """只传桥需要的面（axtree + url），axtree 已是可 JSON 的 dict。"""
-    return {"url": obs.get("url", ""), "axtree_object": obs.get("axtree_object")}
+    """只传桥需要的面（axtree + url + 动作错误），axtree 已是可 JSON 的 dict。"""
+    return {
+        "url": obs.get("url", ""),
+        "axtree_object": obs.get("axtree_object"),
+        "last_action_error": obs.get("last_action_error", ""),
+    }
 
 
 def main():

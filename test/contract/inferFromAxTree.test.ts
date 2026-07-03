@@ -146,6 +146,30 @@ describe('inferFromAxTree——BrowserGym AXTree → PageSnapshot', () => {
     expect(snapshot.actions.every((a) => a.label.length <= 80)).toBe(true);
   });
 
+  it('无名控件认领文档序紧邻的前置文本标签（SuiteCRM 表单无 label 关联）', () => {
+    const nodes: AxNode[] = [
+      N('1', 'RootWebArea', '', { childIds: ['2', '3', '4', '5'] }),
+      N('2', 'StaticText', 'OFFICE PHONE'),
+      N('3', 'textbox', '', { browsergym_id: 'b1' }),
+      N('4', 'StaticText', 'FAX'),
+      N('5', 'textbox', '', { browsergym_id: 'b2' }),
+    ];
+    const { snapshot } = inferFromAxTree(nodes, '/p');
+    expect(snapshot.controls.map((c) => c.name)).toEqual(['OFFICE PHONE', 'FAX']);
+  });
+
+  it('真实编辑态表单（SuiteCRM record edit）：控件不再是无名氏', async () => {
+    const { readFileSync } = await import('node:fs');
+    const obs = JSON.parse(readFileSync('test/fixtures/real/ax-suitecrm-editform.json', 'utf8'));
+    const nodes = (obs.axtree_object?.nodes ?? obs.axtree_object) as AxNode[];
+    const { snapshot } = inferFromAxTree(nodes, obs.url);
+    const names = snapshot.controls.map((c) => c.name);
+    expect(names).toContain('OFFICE PHONE');
+    expect(names).toContain('WEBSITE');
+    // 匿名兜底名（'textbox'）不得超过 2 个
+    expect(names.filter((n2) => n2 === 'textbox').length).toBeLessThanOrEqual(2);
+  });
+
   it('危险动词 → high risk（held 的输入）', () => {
     const nodes: AxNode[] = [
       N('1', 'RootWebArea', '', { childIds: ['2', '3'] }),

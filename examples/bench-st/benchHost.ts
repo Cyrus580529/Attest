@@ -9,6 +9,8 @@ import { inferFromAxTree, type AxNode } from '../../src/contract/inferFromAxTree
 export interface BenchObs {
   url?: string;
   axtree_object?: { nodes?: AxNode[] } | AxNode[];
+  /** BrowserGym：上一动作的执行错误（点击超时/元素过期等）——不读它就会把"没执行成"当"无变化"。 */
+  last_action_error?: string;
 }
 
 export interface BenchHostDeps {
@@ -48,14 +50,22 @@ export function createBenchHostAdapter(deps: BenchHostDeps): HostAdapter {
   const settle = deps.settleAction === undefined ? 'noop(700)' : deps.settleAction;
   const act = async (action: string): Promise<HostResult> => {
     obs = await deps.execute(action);
+    const err = obs.last_action_error?.trim(); // settle 前捕获——noop 会覆盖字段
     if (settle) obs = await deps.execute(settle); // 等异步渲染后的真实 obs
-    return { ok: true, snapshot: refresh() };
+    const snapshot = refresh();
+    return err ? { ok: false, snapshot, note: err.slice(0, 200) } : { ok: true, snapshot };
   };
 
   const clickRef = async (ref: Ref): Promise<HostResult> => {
     const bid = bids.get(ref.id);
     if (!bid) return { ok: false, snapshot: current, note: `no bid for ${ref.id}` };
-    return act(`click(${pyStr(bid)})`);
+    let r = await act(`click(${pyStr(bid)})`);
+    // bid 过期自愈：Angular 重渲染换元素——settle 后的新快照按同名 ref 重解析新 bid，重试一次
+    if (!r.ok && /timeout|resolve|detach|not.*found/i.test(r.note ?? '')) {
+      const again = bids.get(ref.id);
+      if (again && again !== bid) r = await act(`click(${pyStr(again)})`);
+    }
+    return r;
   };
 
   return {

@@ -34,6 +34,29 @@ describe('executeWrite', () => {
     expect(ledger.entries.some((e) => e.kind === 'write' && e.verified)).toBe(true);
   });
 
+  it('host 明确报 ok:false（如点击超时/元素过期）→ 记 error 而非假"未验证"', async () => {
+    const snap = makeSnap(`<button data-agent-action="go">Go</button>`);
+    const host: HostAdapter = {
+      snapshot: () => snap,
+      readSurface: () => '',
+      openObject: async () => ({ ok: true, snapshot: snap }),
+      navigate: async () => ({ ok: true, snapshot: snap }),
+      setControl: async () => ({ ok: true, snapshot: snap }),
+      invokeAction: async () => ({ ok: false, snapshot: snap, note: 'click timeout: element detached' }),
+    };
+    const ledger = new Ledger();
+    const r = await executeWrite(host, ledger, APPROVE_ONCE, new Set(), {
+      tool: 'invokeAction',
+      refId: 'action:go',
+    });
+    expect(r.verified).toBe(false);
+    expect(r.toolResult).toContain('ERROR');
+    expect(r.toolResult).toContain('element detached');
+    // 账本记 error（动作没执行成），不记 write（防污染 outcome/世界模型）
+    expect(ledger.entries.some((e) => e.kind === 'error')).toBe(true);
+    expect(ledger.entries.some((e) => e.kind === 'write')).toBe(false);
+  });
+
   it('写后无可观察变化 → verified false，且提示"未验证≠失败，勿盲目重试"', async () => {
     const before = makeSnap(`<input data-agent-control="qty" value="0"/>`);
     const host = new FakeHostAdapter(before); // 无 transition → 快照不变

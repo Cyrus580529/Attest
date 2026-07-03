@@ -81,8 +81,15 @@ export function inferFromAxTree(nodes: AxNode[], url: string): AxTreeInferResult
   const seenAction = new Set<string>();
   let oi = 0;
 
+  // 无名控件的标签认领：SuiteCRM 等表单不做 label 关联，字段标题是 DFS 序上紧邻的
+  // 前置 StaticText——途中记住最近短文本，控件缺名时在近距离内认领（实测 15/15 命中）。
+  let visitIdx = 0;
+  let lastText: { text: string; at: number } | null = null;
+  const NEARBY = 10;
+
   const visit = (n: AxNode | undefined): void => {
     if (!n || isPruned(n)) return; // hidden 整棵剪掉
+    visitIdx += 1;
     if (n.ignored) {
       // CDP ignored：本节点不入树但子树照常——只下钻，不参与分类
       for (const cid of n.childIds ?? []) visit(byId.get(cid));
@@ -90,6 +97,7 @@ export function inferFromAxTree(nodes: AxNode[], url: string): AxTreeInferResult
     }
     const role = clean(n.role?.value);
     const name = clean(n.name?.value);
+    if (role === 'StaticText' && name && name.length <= 40) lastText = { text: name, at: visitIdx };
 
     if (ACTION_ROLES.has(role) && n.browsergym_id) {
       const label = clip(name || textOf(n, byId));
@@ -101,7 +109,8 @@ export function inferFromAxTree(nodes: AxNode[], url: string): AxTreeInferResult
         bids.set(ref.id, n.browsergym_id);
       }
     } else if (CONTROL_ROLES.has(role) && n.browsergym_id) {
-      const label = clip(name || role);
+      const nearby = lastText !== null && visitIdx - (lastText as { at: number }).at <= NEARBY ? (lastText as { text: string }).text : '';
+      const label = clip(name || nearby || role);
       const ref = minter.mint('control', label);
       controls.push({
         ref,

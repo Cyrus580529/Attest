@@ -133,6 +133,14 @@ export async function executeWrite(
     steps.push({ type: 'error', tool: req.tool, refId: req.refId, error });
     return { steps, toolResult: `ERROR: ${error}`, verified: false };
   }
+  // host 明确报执行失败（点击超时/元素过期等）：如实记 error——按"无变化的写"处理
+  // 会给模型假"未验证"（勿重试文案反而拦住它换路），也会给账本记进从未发生的写。
+  if (!result.ok) {
+    const error = `host 报告动作未执行成功：${result.note ?? '(无详情)'}`;
+    ledger.record({ kind: 'error', tool: req.tool, detail: error });
+    steps.push({ type: 'error', tool: req.tool, refId: req.refId, error });
+    return { steps, toolResult: `ERROR: ${error}`, verified: false };
+  }
   let evidence = diffSnapshots(preExec, result.snapshot);
   // settle：页面 handler 可能异步渲染（网络/setTimeout），写返回一瞬的快照看不到效果。
   // 无变化时有界退避重照再 diff，减少假"未验证"——它会诱导模型重试造成重复副作用。
