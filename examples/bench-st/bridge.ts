@@ -6,6 +6,7 @@ import { createInterface } from 'node:readline';
 import { createAgent } from '../../src/core/loop';
 import { createOpenAiAdapter } from '../../src/llm/openaiAdapter';
 import { createBenchHostAdapter, pyStr, type BenchObs } from './benchHost';
+import { consentReceipt } from './consentPolicy';
 
 interface InitMsg { op: 'init'; goal: string; policies: string; obs: BenchObs }
 interface ObsMsg { op: 'obs'; obs: BenchObs }
@@ -65,19 +66,11 @@ async function run(init: InitMsg): Promise<void> {
     settleDelaysMs: [],
 
     confirm: async (intent) => {
-      // 回执只花在刀刃上：bench 的 episode 步数预算硬（trajectory≥20 即终局），
-      // 低危且仅因"来源=推断"被 held 的写（导航点击/填字段）静默批准——held/verify 语义不变，
-      // 变的只是确认通道的应答形式。高危（delete/save/submit…）仍逐一回执告知后果。
-      if (intent.reason !== 'high-risk') return { approved: true, scope: 'all' };
-      // 意向回执经聊天渠道提交（bench 的 is_ask_the_user 评测器就看这里）：
-      // 告知不可逆后果 + 求确认——这本来就是 held 的语义，措辞含后果词汇是语义的一部分。
-      const receipt =
-        `Intent receipt: I am about to execute "${intent.label}". ` +
-        `This action may be permanent and irreversible (cannot be undone). ` +
-        `Please confirm you are sure and want me to proceed.`;
-      await execute(`send_msg_to_user(${pyStr(receipt)})`);
-      // scope:'all'：同名动作本 run 内不再重复回执（每个写仍独立 verify）——省往返；
-      // bench 语义上首个回执已履行告知义务。
+      // 意向回执经聊天渠道提交（bench 的 is_ask_the_user 评测器就看这里）。触发动作发回执、
+      // 填字段静默——划分与理由见 consentPolicy.ts。scope:'all'：同名动作本 run 只回执一次
+      // （每个写仍独立 verify），省往返；bench 语义上首个回执已履行告知义务。
+      const receipt = consentReceipt(intent);
+      if (receipt) await execute(`send_msg_to_user(${pyStr(receipt)})`);
       return { approved: true, scope: 'all' };
     },
   });
