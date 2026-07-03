@@ -29,6 +29,7 @@ export async function processCall(
   confirm: ConfirmFn,
   grantedScopes: Set<string>,
   worldModel?: WorldModel,
+  settleDelaysMs?: number[],
 ): Promise<CallResult> {
   const name = call.name;
   const before = host.snapshot();
@@ -76,12 +77,14 @@ export async function processCall(
         : undefined;
     // 复用唯一的写原语（verify-or-refuse + 高危 held 只此一处）。grantedScopes 由调用方
     // 传入：读循环主路共享一个（作用域授权 all 生效）。
-    const wr = await executeWrite(host, ledger, confirm, grantedScopes, {
-      tool: name as 'setControl' | 'invokeAction',
-      refId,
-      value,
-      args,
-    });
+    const wr = await executeWrite(
+      host,
+      ledger,
+      confirm,
+      grantedScopes,
+      { tool: name as 'setControl' | 'invokeAction', refId, value, args },
+      settleDelaysMs ? { settleDelaysMs } : {},
+    );
     // 世界模型：每次真正执行的写（含"执行了但无变化"）都在此刻写时裁定——
     // 验证写学正先验，无变化记负样本/落空；连续落空即判漂移，作为 drift step 上报。
     if (worldModel && wr.evidence !== undefined) {
@@ -187,7 +190,7 @@ export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGe
         finished = true;
         break;
       }
-      const result = await processCall(call, host, ledger, confirm, grantedScopes, worldModel);
+      const result = await processCall(call, host, ledger, confirm, grantedScopes, worldModel, deps.settleDelaysMs);
       for (const s of result.steps) yield s;
       // 中途换页（签名变化）时把新页先验搭在本工具结果上补注——多页流程里先验
       // 不只服务起始页；同签名不重复，token 只在换页时花。

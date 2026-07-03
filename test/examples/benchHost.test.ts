@@ -33,24 +33,25 @@ const obs2: BenchObs = {
 };
 
 describe('BenchHostAdapter——obs→快照、写→BrowserGym 动作串', () => {
-  it('invokeAction 发 click(bid)，新 obs 即新快照（verify 的 diff 有料）', async () => {
+  it('invokeAction 发 click(bid) + settle noop 重取 obs（Angular 异步渲染后才是真快照）', async () => {
     const sent: string[] = [];
     const host = createBenchHostAdapter({
       initialObs: obs1,
-      execute: async (a) => { sent.push(a); return obs2; },
+      execute: async (a) => { sent.push(a); return sent.length > 1 ? obs2 : obs1; }, // 效果只在 settle 后可见
     });
     const before = host.snapshot();
     const save = before.actions.find((x) => x.label === '保存')!;
     const r = await host.invokeAction(save.ref);
-    expect(sent).toEqual(['click("a51")']);
+    expect(sent).toEqual(['click("a51")', 'noop(700)']);
     expect(r.ok).toBe(true);
     expect(r.snapshot.surfaces[0]?.text).toBe('已保存');
   });
 
-  it('setControl 发 fill(bid, value)，值转义成 Python 字面量', async () => {
+  it('setControl 发 fill(bid, value)，值转义成 Python 字面量；settleAction:null 可关', async () => {
     const sent: string[] = [];
     const host = createBenchHostAdapter({
       initialObs: obs1,
+      settleAction: null,
       execute: async (a) => { sent.push(a); return obs2; },
     });
     const ctrl = host.snapshot().controls[0]!;

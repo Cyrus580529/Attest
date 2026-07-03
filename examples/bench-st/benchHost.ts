@@ -15,6 +15,12 @@ export interface BenchHostDeps {
   /** 把 BrowserGym 动作字符串交给 Python 侧 env.step，回传新 obs。 */
   execute: (action: string) => Promise<BenchObs>;
   initialObs: BenchObs;
+  /**
+   * 写后 settle：SuiteCRM 等 Angular 页的效果在 env.step 返回的 obs 里常常还没渲染出来，
+   * 补一发 noop(ms) 重取 obs（integrating.md 的不变量："效果落地后才 resolve"）。
+   * 默认 'noop(700)'；传 null 关闭。
+   */
+  settleAction?: string | null;
 }
 
 const axNodes = (obs: BenchObs): AxNode[] => {
@@ -39,8 +45,10 @@ export function createBenchHostAdapter(deps: BenchHostDeps): HostAdapter {
   };
   refresh();
 
+  const settle = deps.settleAction === undefined ? 'noop(700)' : deps.settleAction;
   const act = async (action: string): Promise<HostResult> => {
     obs = await deps.execute(action);
+    if (settle) obs = await deps.execute(settle); // 等异步渲染后的真实 obs
     return { ok: true, snapshot: refresh() };
   };
 

@@ -38,16 +38,34 @@ function isPruned(n: AxNode): boolean {
   return (n.properties ?? []).some((p) => p.name === 'hidden' && p.value?.value === true);
 }
 
-/** 自身 name + 后代文本拼接（有界深度，防环）。 */
+/** 节点文本：CDP 的 computed name 已聚合内容——有 name 用 name（再拼后代会出"Accounts Accounts"
+ * 式重复），无 name 才聚合后代（有界深度，防环）。 */
 function textOf(n: AxNode, byId: Map<string, AxNode>, depth = 6): string {
   if (depth <= 0 || isPruned(n)) return '';
-  const parts = [clean(n.name?.value)];
+  const own = clean(n.name?.value);
+  if (own) return own;
+  const parts: string[] = [];
   for (const cid of n.childIds ?? []) {
     const child = byId.get(cid);
     if (child) parts.push(textOf(child, byId, depth - 1));
   }
   return parts.filter(Boolean).join(' ').trim();
 }
+
+/** 收集带 bid 的可交互后代（link/button 等），供"导航 li"判定。 */
+function interactiveDescendants(n: AxNode, byId: Map<string, AxNode>, depth = 6): AxNode[] {
+  if (depth <= 0 || isPruned(n)) return [];
+  const out: AxNode[] = [];
+  for (const cid of n.childIds ?? []) {
+    const child = byId.get(cid);
+    if (!child) continue;
+    if (!child.ignored && ACTION_ROLES.has(clean(child.role?.value)) && child.browsergym_id) out.push(child);
+    out.push(...interactiveDescendants(child, byId, depth - 1));
+  }
+  return out;
+}
+
+const norm = (s: string): string => s.toLowerCase().replace(/\s+/g, ' ').trim();
 
 export function inferFromAxTree(nodes: AxNode[], url: string): AxTreeInferResult {
   const byId = new Map(nodes.map((n) => [n.nodeId, n]));
@@ -96,10 +114,27 @@ export function inferFromAxTree(nodes: AxNode[], url: string): AxTreeInferResult
     } else if (OBJECT_ROLES.has(role)) {
       const label = clip(textOf(n, byId));
       if (label) {
+        // 导航 li：内容恰为单个链接（文本一致）——是"可去的地方"不是"数据行"，
+        // 推断为 action 才能让模型导航（SuiteCRM 模块菜单实测就是这个形状）。
+        const links = interactiveDescendants(n, byId);
+        const first = links[0];
+        if (links.length === 1 && first && norm(textOf(first, byId)) === norm(label)) {
+          if (!seenAction.has(label)) {
+            seenAction.add(label);
+            const ref = minter.mint('action', label);
+            actions.push({ ref, name: label, label, risk: HIGH_RISK.test(label) ? 'high' : 'low', provenance: 'inferred' });
+            bids.set(ref.id, first.browsergym_id!);
+          }
+          return;
+        }
         oi += 1;
         const ref = minter.mint('object', `item:${oi}`);
         objects.push({ ref, type: 'item', objectId: String(oi), label, provenance: 'inferred' });
-        if (n.browsergym_id) bids.set(ref.id, n.browsergym_id);
+        // 点击句柄优先绑"主链接"（文本为行 label 前缀的第一个链接=名字链接）：
+        // 列表行中央布满内联动作（Log Call…），点行本身等于乱点；点名字链接才进详情。
+        const primary = links.find((l) => norm(label).startsWith(norm(textOf(l, byId))) && textOf(l, byId));
+        const handle = primary?.browsergym_id ?? n.browsergym_id;
+        if (handle) bids.set(ref.id, handle);
         return; // 对象吞掉后代（行内文本已并入 label；行内按钮通常也有独立 bid，需要时再放开）
       }
     } else if (SURFACE_ROLES.has(role)) {

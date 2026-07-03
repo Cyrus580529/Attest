@@ -48,4 +48,6 @@ export interface LoopDeps {
   maxSteps: number;
   /** 上下文 token 预算：读循环历史超此值即压缩（保 system+user+近期，中间以账本摘要替代）。 */
   maxContextTokens: number;
+  /** 写后验证 settle 退避序列（毫秒），透传 executeWrite；默认 [25, 75]。 */
+  settleDelaysMs?: number[];
 }

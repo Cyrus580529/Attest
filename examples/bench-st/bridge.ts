@@ -23,9 +23,18 @@ const llm = createOpenAiAdapter({
 
 // 单飞行请求：agent 是顺序的，一次只有一个 step 在等 obs。
 let pending: ((obs: BenchObs) => void) | null = null;
+let stepN = 0;
+const dumpDir = process.env.ATTEST_BENCH_DUMP; // 设为目录路径则逐步落盘 obs（诊断用）
+const dump = (obs: BenchObs) => {
+  if (!dumpDir) return;
+  stepN += 1;
+  void import('node:fs').then((fs) =>
+    fs.writeFileSync(`${dumpDir}/obs-${String(stepN).padStart(2, '0')}.json`, JSON.stringify(obs)),
+  );
+};
 const execute = (action: string): Promise<BenchObs> =>
   new Promise((resolve) => {
-    pending = resolve;
+    pending = (obs) => { dump(obs); resolve(obs); };
     send({ op: 'step', action });
   });
 
@@ -52,6 +61,9 @@ async function run(init: InitMsg): Promise<void> {
     llm,
     host,
     maxSteps: Number(process.env.ATTEST_BENCH_MAXSTEPS ?? 30),
+    // settle 在宿主层做（noop 重取 obs）：内核 settle 重照的是缓存 obs，照不到新东西——关掉省时
+    settleDelaysMs: [],
+
     confirm: async (intent) => {
       // 意向回执经聊天渠道提交（bench 的 is_ask_the_user 评测器就看这里）：
       // 告知不可逆后果 + 求确认——这本来就是 held 的语义，措辞含后果词汇是语义的一部分。
@@ -60,7 +72,9 @@ async function run(init: InitMsg): Promise<void> {
         `This action may be permanent and irreversible (cannot be undone). ` +
         `Please confirm you are sure and want me to proceed.`;
       await execute(`send_msg_to_user(${pyStr(receipt)})`);
-      return { approved: true, scope: 'once' };
+      // scope:'all'：同名动作本 run 内不再重复回执（每个写仍独立 verify）——省往返；
+      // bench 语义上首个回执已履行告知义务。
+      return { approved: true, scope: 'all' };
     },
   });
   const task =
@@ -79,6 +93,7 @@ async function run(init: InitMsg): Promise<void> {
       if (step.type === 'action') log(`action ${step.tool}(${step.refId}) verified=${step.verified}`);
       else if (step.type === 'held') log(`held ${step.intent.label}`);
       else if (step.type === 'error') log(`error ${step.tool}: ${step.error}`);
+      else if (step.type === 'observation') log(`observe ${step.tool}${step.refId ? `(${step.refId})` : ''}`);
     }
   } catch (e) {
     log(`FATAL ${e instanceof Error ? e.message : String(e)}`);

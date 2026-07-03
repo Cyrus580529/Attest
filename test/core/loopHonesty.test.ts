@@ -96,6 +96,33 @@ describe('loop honesty', () => {
     expect(steps.at(-1)).toMatchObject({ type: 'finish', outcome: 'failed' });
   });
 
+  it('settleDelaysMs 可配：慢渲染页面（>100ms）在自定义退避内完成验证', async () => {
+    const before = build(`<button data-agent-action="apply">申请</button><p data-agent-surface="s">旧</p>`);
+    const after = build(`<button data-agent-action="apply">申请</button><p data-agent-surface="s">新</p>`, '/p');
+    // host：点击后 150ms 才把效果落到快照（模拟 Angular 异步重渲染）
+    let current = before;
+    const host = {
+      snapshot: () => current,
+      readSurface: () => '',
+      openObject: async () => ({ ok: true, snapshot: current }),
+      navigate: async () => ({ ok: true, snapshot: current }),
+      setControl: async () => ({ ok: true, snapshot: current }),
+      invokeAction: async () => {
+        setTimeout(() => { current = after; }, 150);
+        return { ok: true, snapshot: current };
+      },
+    };
+    const llm = new FakeLlmAdapter([
+      toolCallTurn('invokeAction', { ref: 'action:apply' }),
+      toolCallTurn('finish', { answer: '已申请' }),
+    ]);
+    const steps = await collect(
+      createAgent({ llm, host, settleDelaysMs: [50, 200] }).run('申请'),
+    );
+    expect(steps.some((s) => s.type === 'action' && s.verified)).toBe(true);
+    expect(steps.at(-1)).toMatchObject({ type: 'finish', outcome: 'completed' });
+  });
+
   it('finish 携带 ledger 票根', async () => {
     const llm = new FakeLlmAdapter([toolCallTurn('finish', { answer: 'hi' })]);
     const host = new FakeHostAdapter(build(`<div data-agent-object="task:1">A</div>`));

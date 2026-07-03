@@ -26,6 +26,8 @@ export interface AgentOptions {
   worldModel?: WorldModel;
   /** 上下文 token 预算（估算，char/4）；读循环历史超此值即压缩。默认 24000。 */
   maxContextTokens?: number;
+  /** 写后验证 settle 退避序列（毫秒）：慢异步渲染页面（如 Angular）可加长，默认 [25, 75]。 */
+  settleDelaysMs?: number[];
 }
 
 const DEFAULT_MAX_STEPS = 12;
@@ -45,6 +47,7 @@ export function createAgent(options: AgentOptions) {
     worldModel: options.worldModel,
     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
     maxContextTokens: options.maxContextTokens ?? DEFAULT_MAX_CONTEXT_TOKENS,
+    settleDelaysMs: options.settleDelaysMs,
   };
 
   function run(userMessage: string): AsyncGenerator<AgentStep> {

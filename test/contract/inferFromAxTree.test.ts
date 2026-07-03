@@ -67,6 +67,59 @@ describe('inferFromAxTree——BrowserGym AXTree → PageSnapshot', () => {
     expect(withBid.length).toBe(snapshot.actions.length); // action 必带可执行句柄
   });
 
+  it('导航 li（内容恰为单个链接）推断为 action 而非对象——SuiteCRM 模块菜单是这个形状', () => {
+    const nodes: AxNode[] = [
+      N('1', 'RootWebArea', '', { childIds: ['2'] }),
+      N('2', 'list', '', { childIds: ['3', '5'] }),
+      N('3', 'listitem', '', { childIds: ['4'] }),
+      N('4', 'link', 'Accounts', { browsergym_id: 'n1' }),
+      N('5', 'listitem', '', { childIds: ['6', '7'] }), // 多内容 li 仍是对象
+      N('6', 'link', '打开', { browsergym_id: 'n2' }),
+      N('7', 'StaticText', '订单 #1001 · 金额 500'),
+    ];
+    const { snapshot, bids } = inferFromAxTree(nodes, '/p');
+    const nav = snapshot.actions.find((a) => a.label === 'Accounts');
+    expect(nav).toBeTruthy();
+    expect(bids.get(nav!.ref.id)).toBe('n1');
+    expect(snapshot.objects).toHaveLength(1);
+    expect(snapshot.objects[0]!.label).toContain('订单 #1001');
+  });
+
+  it('行对象的点击句柄绑到主链接（名字链接）——点行中心会误触行内动作', () => {
+    const nodes: AxNode[] = [
+      N('1', 'RootWebArea', '', { childIds: ['2'] }),
+      N('2', 'row', '', { browsergym_id: 'row9', childIds: ['3', '4', '5'] }),
+      N('3', 'cell', '', { childIds: ['3a'] }),
+      N('3a', 'link', 'Wayne Enterprises', { browsergym_id: 'name1' }),
+      N('4', 'cell', 'National City'),
+      N('5', 'cell', '', { childIds: ['5a'] }),
+      N('5a', 'link', 'Log Call', { browsergym_id: 'act1' }),
+    ];
+    const { snapshot, bids } = inferFromAxTree(nodes, '/p');
+    const row = snapshot.objects[0]!;
+    expect(row.label.startsWith('Wayne Enterprises')).toBe(true);
+    expect(bids.get(row.ref.id)).toBe('name1'); // 主链接，不是 row9
+  });
+
+  it('真实 accounts 列表页：Wayne 行的句柄=其名字链接的 bid', async () => {
+    const { readFileSync } = await import('node:fs');
+    const obs = JSON.parse(readFileSync('test/fixtures/real/ax-suitecrm-accounts.json', 'utf8'));
+    const nodes = (obs.axtree_object?.nodes ?? obs.axtree_object) as AxNode[];
+    const { snapshot, bids } = inferFromAxTree(nodes, obs.url);
+    const wayne = snapshot.objects.find((o) => o.label.startsWith('Wayne Enterprises'))!;
+    const nameLink = nodes.find((n) => n.role?.value === 'link' && n.name?.value === 'Wayne Enterprises')!;
+    expect(bids.get(wayne.ref.id)).toBe(nameLink.browsergym_id);
+  });
+
+  it('真实 AXTree：模块导航（Accounts/Contacts/Leads）成为 action，label 不重复', async () => {
+    const { readFileSync } = await import('node:fs');
+    const nodes = JSON.parse(readFileSync('test/fixtures/real/ax-suitecrm-235.json', 'utf8')) as AxNode[];
+    const { snapshot } = inferFromAxTree(nodes, 'http://localhost:8080/');
+    const labels = snapshot.actions.map((a) => a.label);
+    for (const want of ['Accounts', 'Contacts', 'Leads']) expect(labels).toContain(want);
+    expect(labels.some((l) => /^(\S+) \1$/.test(l))).toBe(false); // 无 "Accounts Accounts" 式重复
+  });
+
   it('hidden 属性节点整棵剪掉', () => {
     const nodes: AxNode[] = [
       N('1', 'RootWebArea', '', { childIds: ['2', '3'] }),
