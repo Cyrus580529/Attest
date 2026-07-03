@@ -22,9 +22,29 @@ describe('computeOutcome', () => {
     ).toBe('completed');
   });
 
-  it('写动作未验证 → failed', () => {
+  it('写动作未验证且其后无验证写（未恢复）→ failed', () => {
     expect(
       computeOutcome([{ kind: 'write', tool: 'invokeAction', refId: 'a', verified: false, evidence: [] }]),
+    ).toBe('failed');
+  });
+
+  it('未验证写后有验证成功的写（已恢复，与 error 恢复规则同形）→ completed', () => {
+    // 场景：模型点了本就激活的 tab（无变化=正确地未验证），随后的关键写全部验证——
+    // 一次无效果的探索性点击不应把整个任务拍成 failed。
+    expect(
+      computeOutcome([
+        { kind: 'write', tool: 'invokeAction', refId: 'tab', verified: false, evidence: [] },
+        { kind: 'write', tool: 'invokeAction', refId: 'save', verified: true, evidence: ['c'] },
+      ]),
+    ).toBe('completed');
+  });
+
+  it('验证写在前、未验证写收尾（终态不明）→ failed', () => {
+    expect(
+      computeOutcome([
+        { kind: 'write', tool: 'invokeAction', refId: 'save', verified: true, evidence: ['c'] },
+        { kind: 'write', tool: 'invokeAction', refId: 'tab', verified: false, evidence: [] },
+      ]),
     ).toBe('failed');
   });
 
