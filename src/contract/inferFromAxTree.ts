@@ -154,12 +154,26 @@ export function inferFromAxTree(nodes: AxNode[], url: string): AxTreeInferResult
         if (handle) bids.set(ref.id, handle);
         return; // 对象吞掉后代（行内文本已并入 label；行内按钮通常也有独立 bid，需要时再放开）
       }
-    } else if (SURFACE_ROLES.has(role)) {
+    } else if (SURFACE_ROLES.has(role) || role === 'tabpanel') {
       const label = clip(name || role);
       const ref = minter.mint('surface', label);
-      surfaces.push({ ref, name: label, text: textOf(n, byId), provenance: 'inferred' });
+      // tabpanel 的 name 是页签标题，内容在后代——聚合后代文本（真实面板嵌套深，
+      // 深度放宽到 14）；status/alert 的 name 即内容。
+      const text =
+        role === 'tabpanel'
+          ? (n.childIds ?? [])
+              .map((cid) => {
+                const child = byId.get(cid);
+                return child ? textOf(child, byId, 14) : '';
+              })
+              .filter(Boolean)
+              .join(' ')
+          : textOf(n, byId);
+      surfaces.push({ ref, name: label, text, provenance: 'inferred' });
       if (n.browsergym_id) bids.set(ref.id, n.browsergym_id);
-      return;
+      // tabpanel 是"内容区域"不是叶子告示：面板里还有控件/动作（编辑态表单就在里面），
+      // 吞掉后代会让整个面板不可操作——surface 供读取，后代照常分类。
+      if (role !== 'tabpanel') return;
     }
 
     for (const cid of n.childIds ?? []) visit(byId.get(cid));

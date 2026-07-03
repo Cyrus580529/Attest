@@ -67,6 +67,31 @@ describe('inferFromAxTree——BrowserGym AXTree → PageSnapshot', () => {
     expect(withBid.length).toBe(snapshot.actions.length); // action 必带可执行句柄
   });
 
+  it('tabpanel 是可读 surface（面板内容=字段值所在），且不吞后代——面板内控件仍在', () => {
+    const nodes: AxNode[] = [
+      N('1', 'RootWebArea', '', { childIds: ['2'] }),
+      N('2', 'tabpanel', 'TASK OVERVIEW', { browsergym_id: 'p1', childIds: ['3', '4', '5'] }),
+      N('3', 'StaticText', 'PRIORITY'),
+      N('4', 'StaticText', 'High'),
+      N('5', 'textbox', 'SUBJECT', { browsergym_id: 't1', value: { value: 'Q3' } }),
+    ];
+    const { snapshot } = inferFromAxTree(nodes, '/p');
+    const panel = snapshot.surfaces.find((s) => s.name === 'TASK OVERVIEW');
+    expect(panel?.text).toContain('High'); // 字段值可读——模型不必进编辑态核对
+    expect(snapshot.controls.some((c) => c.name === 'SUBJECT')).toBe(true); // 后代未被吞
+  });
+
+  it('真实夹具：MORE INFORMATION tabpanel 成为 surface，编辑态控件不受影响', async () => {
+    const { readFileSync } = await import('node:fs');
+    const obs = JSON.parse(readFileSync('test/fixtures/real/ax-suitecrm-tab-moreinfo.json', 'utf8'));
+    const nodes = (obs.axtree_object?.nodes ?? obs.axtree_object) as AxNode[];
+    const { snapshot } = inferFromAxTree(nodes, obs.url as string);
+    const panel = snapshot.surfaces.find((s) => s.name === 'MORE INFORMATION');
+    expect(panel).toBeDefined();
+    expect(panel!.text).toContain('INDUSTRY');
+    expect(snapshot.controls.map((c) => c.name)).toContain('ANNUAL REVENUE');
+  });
+
   it('提交类动词（save/保存 与 submit/delete 同族——持久化状态变更）推断为高危', () => {
     const nodes: AxNode[] = [
       N('1', 'RootWebArea', '', { childIds: ['2', '3'] }),
