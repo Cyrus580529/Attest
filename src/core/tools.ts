@@ -41,6 +41,19 @@ export const FINISH_TOOL: ToolSchema = {
   },
 };
 
+export const ASK_USER_TOOL: ToolSchema = {
+  name: 'askUser',
+  description:
+    '当任务的关键参数缺失或有歧义时，向用户提出一个澄清问题。这是只读操作，不会改动页面。' +
+    '交互环境会返回用户的回答；无人应答时，只用任务明确提供的值继续、缺失字段留空，绝不编造。',
+  parameters: {
+    type: 'object',
+    properties: { question: { type: 'string', description: '要向用户澄清的问题' } },
+    required: ['question'],
+    additionalProperties: false,
+  },
+};
+
 export const READ_LOOP_TOOLS: ToolSchema[] = [
   {
     name: 'observePage',
@@ -50,6 +63,7 @@ export const READ_LOOP_TOOLS: ToolSchema[] = [
   { name: 'readSurface', description: '读取某个 surface 区域的文本内容。', parameters: refParam('surface 的 ref id') },
   { name: 'openObject', description: '打开/选中一个对象以查看更多。', parameters: refParam('object 的 ref id') },
   { name: 'navigate', description: '跳转到某个对象的详情/位置。', parameters: refParam('object 的 ref id') },
+  ASK_USER_TOOL,
   FINISH_TOOL,
 ];
 

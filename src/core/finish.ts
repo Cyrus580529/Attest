@@ -16,6 +16,7 @@ export function buildFacts(entries: readonly LedgerEntry[], outcome: Outcome): F
   const unverified: FinishFacts['unverified'] = [];
   const cancelled: FinishFacts['cancelled'] = [];
   const writeErrors: FinishFacts['writeErrors'] = [];
+  const clarifications: FinishFacts['clarifications'] = [];
   const intentLabels = new Map<string, string>();
 
   for (const e of entries) {
@@ -25,6 +26,8 @@ export function buildFacts(entries: readonly LedgerEntry[], outcome: Outcome): F
       else unverified.push({ tool: e.tool, refId: e.refId });
     } else if (e.kind === 'grant' && !e.approved) {
       cancelled.push({ refId: e.refId, label: intentLabels.get(e.refId) });
+    } else if (e.kind === 'clarify') {
+      clarifications.push({ question: e.question, answered: e.answered });
     } else if (e.kind === 'error' && WRITE_TOOL_NAMES.has(e.tool)) {
       writeErrors.push({ tool: e.tool, detail: e.detail });
     }
@@ -36,6 +39,12 @@ export function buildFacts(entries: readonly LedgerEntry[], outcome: Outcome): F
   if (unverified.length > 0)
     lines.push(`${unverified.length} 个动作未能确认完成（执行后未检测到可观察变化，≠失败）`);
   if (writeErrors.length > 0) lines.push(`${writeErrors.length} 个写操作出错未执行`);
+  if (clarifications.length > 0) {
+    const unanswered = clarifications.filter((c) => !c.answered).length;
+    lines.push(
+      `向用户提出 ${clarifications.length} 个澄清` + (unanswered > 0 ? `（其中 ${unanswered} 个未获答复）` : ''),
+    );
+  }
 
   const summary =
     entries.length === 0
@@ -44,7 +53,7 @@ export function buildFacts(entries: readonly LedgerEntry[], outcome: Outcome): F
         ? lines.join('；')
         : '仅读取了页面，未执行写操作';
 
-  return { outcome, verified, unverified, cancelled, writeErrors, summary };
+  return { outcome, verified, unverified, cancelled, writeErrors, clarifications, summary };
 }
 
 /** answer 兼容拼接：narration（模型原话，在前）+ 执行记录（账本生成，在后）。 */

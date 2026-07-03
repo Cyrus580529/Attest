@@ -1,6 +1,6 @@
 import type { LlmAdapter } from '../llm/types';
 import type { HostAdapter } from '../host/types';
-import type { ConfirmFn } from '../honesty/types';
+import type { AskFn, ConfirmFn } from '../honesty/types';
 import { READ_LOOP_TOOLS, ACT_TOOLS, PROGRAM_ACT_TOOLS } from './tools';
 import { RecipeBook } from '../memory/recipeBook';
 import type { WorldModel } from '../memory/worldModel';
@@ -15,6 +15,8 @@ export interface AgentOptions {
   llm: LlmAdapter;
   host: HostAdapter;
   confirm?: ConfirmFn;
+  /** 澄清回调（confirm 的姊妹）：任务信息不足时 agent 主动提问。默认无人应答（非交互）。 */
+  ask?: AskFn;
   readOnly?: boolean;
   maxSteps?: number;
   systemPrompt?: string;
@@ -33,6 +35,7 @@ export interface AgentOptions {
 const DEFAULT_MAX_STEPS = 12;
 const DEFAULT_MAX_CONTEXT_TOKENS = 24_000;
 const DENY: ConfirmFn = () => Promise.resolve({ approved: false });
+const NO_ANSWER: AskFn = () => Promise.resolve({}); // 默认非交互宿主：无人应答
 
 /** 组装运行上下文，按模式分派到读循环或 Code-as-Action 程序循环。 */
 export function createAgent(options: AgentOptions) {
@@ -43,6 +46,7 @@ export function createAgent(options: AgentOptions) {
     tools: options.readOnly ? READ_LOOP_TOOLS : programMode ? PROGRAM_ACT_TOOLS : ACT_TOOLS,
     systemPrompt: options.systemPrompt ?? (programMode ? programSystemPrompt() : defaultSystemPrompt()),
     confirm: options.confirm ?? DENY,
+    ask: options.ask ?? NO_ANSWER,
     recipes: options.recipes,
     worldModel: options.worldModel,
     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,

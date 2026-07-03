@@ -1,7 +1,7 @@
 import type { RefKind } from '../types';
 import type { LlmMessage, LlmToolCall } from '../llm/types';
 import type { HostAdapter } from '../host/types';
-import type { ConfirmFn } from '../honesty/types';
+import type { AskFn, ConfirmFn } from '../honesty/types';
 import { REF_TOOL_KINDS, WRITE_REF_KINDS } from './tools';
 import { resolveRef } from './refResolver';
 import { serializeSnapshot } from './serialize';
@@ -28,6 +28,7 @@ export async function processCall(
   ledger: Ledger,
   confirm: ConfirmFn,
   grantedScopes: Set<string>,
+  ask: AskFn,
   worldModel?: WorldModel,
   settleDelaysMs?: number[],
 ): Promise<CallResult> {
@@ -38,6 +39,22 @@ export async function processCall(
     const result = serializeSnapshot(before);
     ledger.record({ kind: 'observe', tool: name, detail: result });
     return { steps: [{ type: 'observation', tool: name, result }], toolResult: result };
+  }
+
+  if (name === 'askUser') {
+    const question = String(call.arguments.question ?? '').trim();
+    if (!question) {
+      ledger.record({ kind: 'error', tool: name, detail: 'askUser 需要 question' });
+      return { steps: [{ type: 'error', tool: name, error: 'askUser 需要 question' }], toolResult: 'ERROR: askUser 需要 question' };
+    }
+    const { answer } = await ask(question);
+    const answered = answer !== undefined;
+    ledger.record({ kind: 'clarify', question, answered });
+    const toolResult = answered
+      ? `用户回答：${answer}`
+      : '（无人应答。若这是完成任务的关键信息缺失，请只用任务明确提供的值继续、缺失的可选字段留空交由系统默认，' +
+        '并在最终回答里说明你做的假设；绝不编造用户未提供的值填入。）';
+    return { steps: [{ type: 'clarify', question, answered }], toolResult };
   }
 
   const readKind: RefKind | undefined = REF_TOOL_KINDS[name];
@@ -151,7 +168,7 @@ function worldModelPriorText(worldModel: WorldModel, snap: PageSnapshot): string
  * 世界模型（若有）把「已知动作→diff」作先验注入，帮模型更自信地规划——但绝不旁路模型。
  */
 export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGenerator<AgentStep> {
-  const { llm, host, tools, systemPrompt, confirm, worldModel, maxSteps, maxContextTokens } = deps;
+  const { llm, host, tools, systemPrompt, confirm, ask, worldModel, maxSteps, maxContextTokens } = deps;
   const ledger = new Ledger();
   const grantedScopes = new Set<string>(); // 本 run 内共享的作用域授权（scope: 'all'）
   let lastPriorSig = pageSignature(host.snapshot()); // 起始页先验随 user 消息注入，此后按签名变化补注
@@ -190,7 +207,7 @@ export async function* runReadLoop(deps: LoopDeps, userMessage: string): AsyncGe
         finished = true;
         break;
       }
-      const result = await processCall(call, host, ledger, confirm, grantedScopes, worldModel, deps.settleDelaysMs);
+      const result = await processCall(call, host, ledger, confirm, grantedScopes, ask, worldModel, deps.settleDelaysMs);
       for (const s of result.steps) yield s;
       // 中途换页（签名变化）时把新页先验搭在本工具结果上补注——多页流程里先验
       // 不只服务起始页；同签名不重复，token 只在换页时花。

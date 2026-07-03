@@ -1,6 +1,6 @@
 import type { LlmAdapter, ToolSchema } from '../llm/types';
 import type { HostAdapter } from '../host/types';
-import type { ConfirmFn, Intent, LedgerEntry, Outcome } from '../honesty/types';
+import type { AskFn, ConfirmFn, Intent, LedgerEntry, Outcome } from '../honesty/types';
 import type { RecipeBook } from '../memory/recipeBook';
 import type { WorldModel } from '../memory/worldModel';
 
@@ -15,6 +15,7 @@ export type AgentStep =
   | { type: 'mispredict'; tool: string; refId?: string; expected: string[]; actual: string[] }
   /** 世界模型判定页面行为漂移：已知动作连续未按已知效果发生（observed 空 = 不再有任何效果）。 */
   | { type: 'drift'; tool: string; refId?: string; expected: string[]; observed: string[] }
+  | { type: 'clarify'; question: string; answered: boolean }
   | { type: 'thinking'; text: string }
   | { type: 'plan'; items: string[] }
   | { type: 'error'; tool: string; refId?: string; error: string }
@@ -31,6 +32,8 @@ export interface FinishFacts {
   unverified: { tool: string; refId: string }[];
   cancelled: { refId: string; label?: string }[];
   writeErrors: { tool: string; detail: string }[];
+  /** 主动向用户提出的澄清（信息层不确定）——answered=宿主是否给了答复。 */
+  clarifications: { question: string; answered: boolean }[];
   /** 人话骨架，由上述明细生成；answer 里以"执行记录"出现。 */
   summary: string;
 }
@@ -42,6 +45,8 @@ export interface LoopDeps {
   tools: ToolSchema[];
   systemPrompt: string;
   confirm: ConfirmFn;
+  /** 澄清回调（confirm 的姊妹）：任务信息不足时 agent 主动提问。默认无人应答。 */
+  ask: AskFn;
   recipes?: RecipeBook;
   /** opt-in：从账本学 动作→diff 因果，作为下次同页任务的先验注入（谱系②世界模型；LLM 仍主导）。 */
   worldModel?: WorldModel;

@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { READ_LOOP_TOOLS, REF_TOOL_KINDS } from '../../src/core/tools';
 
 describe('read-loop tools', () => {
-  it('暴露五个工具且无写工具', () => {
+  it('暴露读工具（含 askUser 主动澄清）且无写工具', () => {
     const names = READ_LOOP_TOOLS.map((t) => t.name).sort();
-    expect(names).toEqual(['finish', 'navigate', 'observePage', 'openObject', 'readSurface']);
-    expect(names).not.toContain('invokeAction');
+    expect(names).toEqual(['askUser', 'finish', 'navigate', 'observePage', 'openObject', 'readSurface']);
+    expect(names).not.toContain('invokeAction'); // askUser 是读：不改页面、不进 verify-or-refuse
     expect(names).not.toContain('setControl');
   });
 

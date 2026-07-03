@@ -73,6 +73,13 @@ async function run(init: InitMsg): Promise<void> {
       if (receipt) await execute(`send_msg_to_user(${pyStr(receipt)})`);
       return { approved: true, scope: 'all' };
     },
+
+    // 澄清回调：bench 是单向环境（用户不回话），透传 agent 的问题为 send_msg_to_user
+    // 后返回"无人应答"——agent 据此只用任务给定值继续、缺失留空，绝不编造（见 prompts）。
+    ask: async (question) => {
+      await execute(`send_msg_to_user(${pyStr(question)})`);
+      return {};
+    },
   });
   const task =
     `${init.goal}\n\n` +
