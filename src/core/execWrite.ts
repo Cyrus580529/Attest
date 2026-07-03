@@ -153,8 +153,16 @@ export async function executeWrite(
   ledger.record({ kind: 'write', tool: req.tool, refId: req.refId, verified: evidence.changed, evidence: evidence.details });
   steps.push({ type: 'action', tool: req.tool, refId: req.refId, verified: evidence.changed, evidence: evidence.details });
 
+  // 表单打开信号（复用 diff 事实、非提示词）：一次写让多个输入字段涌现=多半打开了表单/对话框。
+  // 治"点开表单就以为做完"的早退——机制级提醒模型：填必填项、提交、看到结果态才算完成。
+  // 全局良好：任意站点"点按钮→冒出输入字段"都成立；阈值 2 防单字段揭示误报。
+  const fieldsAppeared = evidence.details.filter((d) => d.startsWith('control appeared:')).length;
+  const formHint =
+    req.tool === 'invokeAction' && fieldsAppeared >= 2
+      ? `\n注意：本次操作后出现了 ${fieldsAppeared} 个新的输入字段（很可能打开了一个表单/对话框）——通常要填写所需字段并保存/提交、看到结果状态后任务才算完成，不要就此 finish。`
+      : '';
   const base = evidence.changed
-    ? `done; 证据: ${evidence.details.join('; ')}`
+    ? `done; 证据: ${evidence.details.join('; ')}${formHint}`
     : '已执行，但未检测到可观察变化（未验证）。注意：未验证不等于失败——不要盲目重试同一写操作（可能造成重复副作用），先读取页面确认实际状态。';
   const toolResult = confirmed ? `（此高风险操作已由用户确认后才执行）${base}` : base;
   return { steps, toolResult, verified: evidence.changed, ref: target, evidence: evidence.details };

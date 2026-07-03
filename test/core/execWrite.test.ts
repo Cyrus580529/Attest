@@ -34,6 +34,30 @@ describe('executeWrite', () => {
     expect(ledger.entries.some((e) => e.kind === 'write' && e.verified)).toBe(true);
   });
 
+  it('写动作打开表单（多个输入字段出现）→ 工具结果提示"填完再提交、别就此完成"', async () => {
+    // 点一个动作后，页面冒出一排空控件=打开了表单——治"开表单即假报完成"的早退
+    const before = makeSnap(`<button data-agent-action="new">新建</button>`);
+    const after = makeSnap(
+      `<button data-agent-action="new">新建</button>` +
+        `<input data-agent-control="subject" value=""/>` +
+        `<input data-agent-control="date" value=""/>` +
+        `<input data-agent-control="location" value=""/>`,
+    );
+    const host = new FakeHostAdapter(before, { 'action:new': after });
+    const r = await executeWrite(host, new Ledger(), APPROVE_ONCE, new Set(), { tool: 'invokeAction', refId: 'action:new' });
+    expect(r.verified).toBe(true);
+    expect(r.toolResult).toMatch(/表单|字段.*出现|填写|提交/); // 含表单打开提示
+    expect(r.toolResult).toContain('不要'); // 明示别就此 finish
+  });
+
+  it('普通写（无新字段涌现）→ 不加表单提示', async () => {
+    const before = makeSnap(`<input data-agent-control="qty" value="0"/>`);
+    const after = makeSnap(`<input data-agent-control="qty" value="5"/>`);
+    const host = new FakeHostAdapter(before, { 'control:qty': after });
+    const r = await executeWrite(host, new Ledger(), DENY, new Set(), { tool: 'setControl', refId: 'control:qty', value: '5' });
+    expect(r.toolResult).not.toMatch(/打开了.*表单/);
+  });
+
   it('host 明确报 ok:false（如点击超时/元素过期）→ 记 error 而非假"未验证"', async () => {
     const snap = makeSnap(`<button data-agent-action="go">Go</button>`);
     const host: HostAdapter = {
