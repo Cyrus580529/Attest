@@ -24,7 +24,7 @@ function parseProps(toolEl: Element): ParamSpec[] | undefined {
 }
 
 // 保守风险启发式：VOIX 不定义 risk，危险动词→high（Attest 据此 held）。可被显式 risk="high" 覆盖。
-const HIGH_RISK = /delete|remove|destroy|删除|删|清空|移除|pay|支付|purchase|checkout|confirm|确认|submit|提交|发送|send|ship|发布|deploy/i;
+const HIGH_RISK = /delete|remove|destroy|删除|删|清空|移除|pay|支付|purchase|checkout|confirm|确认|submit|提交|发送|send|ship|发布|deploy|save|保存/i;
 
 function clean(s: string | null | undefined): string {
   return (s ?? '').replace(/\s+/g, ' ').trim();

@@ -11,7 +11,8 @@ describe('parseVoix（骑 VOIX 契约：<tool>/<context> → PageSnapshot）', (
   it('<tool> → action（name + description 作 label）', () => {
     const snap = build(`<tool name="save" description="保存当前任务"></tool>`);
     expect(snap.actions).toHaveLength(1);
-    expect(snap.actions[0]).toMatchObject({ name: 'save', label: '保存当前任务', risk: 'low' });
+    // save/保存 属提交类动词（持久化状态变更），词表判高危——可被显式 risk 覆盖
+    expect(snap.actions[0]).toMatchObject({ name: 'save', label: '保存当前任务', risk: 'high' });
     expect(snap.actions[0]!.ref.kind).toBe('action');
     expect(snap.actions[0]!.provenance).toBe('authored'); // VOIX 是声明式，非推断
   });

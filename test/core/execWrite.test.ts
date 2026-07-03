@@ -155,16 +155,38 @@ describe('executeWrite', () => {
     expect(r.verified).toBe(false);
   });
 
-  it('来源感知：inferred 低危 invoke（如"保存"）→ 也 held', async () => {
-    document.body.innerHTML = `<button>保存</button>`;
+  it('来源感知：inferred 低危 invoke（如"下一页"）→ 也 held', async () => {
+    document.body.innerHTML = `<button>下一页</button>`;
     const before = inferContract(document.body, '/p').snapshot;
     const host = new FakeHostAdapter(before);
     const r = await executeWrite(host, new Ledger(), DENY, new Set(), {
       tool: 'invokeAction',
-      refId: 'action:保存',
+      refId: 'action:下一页',
     });
     expect(r.steps.some((s) => s.type === 'held')).toBe(true);
     expect(r.steps.some((s) => s.type === 'cancelled')).toBe(true);
+  });
+
+  it('Intent.reason 区分 held 缘由：高危=high-risk，纯推断=inferred（宿主按此定回执形式）', async () => {
+    let reason: string | undefined;
+    const confirm: ConfirmFn = (i) => {
+      reason = i.reason;
+      return Promise.resolve({ approved: false });
+    };
+    const hi = makeSnap(`<button data-agent-action="resolve" data-agent-risk="high">R</button>`);
+    await executeWrite(new FakeHostAdapter(hi), new Ledger(), confirm, new Set(), {
+      tool: 'invokeAction',
+      refId: 'action:resolve',
+    });
+    expect(reason).toBe('high-risk');
+
+    document.body.innerHTML = `<button>下一页</button>`;
+    const lo = inferContract(document.body, '/p').snapshot;
+    await executeWrite(new FakeHostAdapter(lo), new Ledger(), confirm, new Set(), {
+      tool: 'invokeAction',
+      refId: 'action:下一页',
+    });
+    expect(reason).toBe('inferred');
   });
 
   it('来源感知：inferred 写 approve → 正常执行验证', async () => {

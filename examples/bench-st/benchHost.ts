@@ -4,6 +4,7 @@
 import type { HostAdapter, HostResult } from '../../src/host/types';
 import type { PageSnapshot, Ref } from '../../src/types';
 import { inferFromAxTree, type AxNode } from '../../src/contract/inferFromAxTree';
+import { diffSnapshots } from '../../src/honesty/verifier';
 
 /** BrowserGym obs 里桥需要的最小面。axtree_object 兼容 {nodes:[...]} 或裸数组。 */
 export interface BenchObs {
@@ -49,10 +50,16 @@ export function createBenchHostAdapter(deps: BenchHostDeps): HostAdapter {
 
   const settle = deps.settleAction === undefined ? 'noop(700)' : deps.settleAction;
   const act = async (action: string): Promise<HostResult> => {
+    const prev = current;
     obs = await deps.execute(action);
     const err = obs.last_action_error?.trim(); // settle 前捕获——noop 会覆盖字段
-    if (settle) obs = await deps.execute(settle); // 等异步渲染后的真实 obs
-    const snapshot = refresh();
+    let snapshot = refresh();
+    // 自适应 settle：动作成功但 obs 还没见到变化时才补 noop 等渲染——bench 的任务
+    // 步数预算硬（trajectory≥20 即终局），效果已可见就别再烧一步。
+    if (settle && !err && !diffSnapshots(prev, snapshot).changed) {
+      obs = await deps.execute(settle);
+      snapshot = refresh();
+    }
     return err ? { ok: false, snapshot, note: err.slice(0, 200) } : { ok: true, snapshot };
   };
 
@@ -76,7 +83,28 @@ export function createBenchHostAdapter(deps: BenchHostDeps): HostAdapter {
     async setControl(ref, value) {
       const bid = bids.get(ref.id);
       if (!bid) return { ok: false, snapshot: current, note: `no bid for ${ref.id}` };
-      return act(`fill(${pyStr(bid)}, ${pyStr(value)})`);
+      const r = await act(`fill(${pyStr(bid)}, ${pyStr(value)})`);
+      if (r.ok || !/not an? <?input/i.test(r.note ?? '')) return r;
+      // 非输入控件（下拉/自定义组件）。先试原生 select_option（真 <select> 一步到位）……
+      const r2 = await act(`select_option(${pyStr(bid)}, ${pyStr(value)})`);
+      if (r2.ok) return r2;
+      // ……再退到通用形：点开控件，在展开后的树里按文本找选项点击。
+      await act(`click(${pyStr(bid)})`);
+      const clean = (s: unknown): string => String(s ?? '').replace(/\s+/g, ' ').trim();
+      const isOption = (n: AxNode): boolean =>
+        ['option', 'menuitem', 'listitem'].includes(clean(n.role?.value)) && Boolean(n.browsergym_id);
+      const want = clean(value).toLowerCase();
+      const opts = axNodes(obs).filter(isOption);
+      const hit = opts.find((n) => clean(n.name?.value).toLowerCase() === want);
+      if (!hit) {
+        const available = opts.map((n) => clean(n.name?.value)).filter(Boolean).slice(0, 20);
+        return {
+          ok: false,
+          snapshot: current,
+          note: `控件不是文本输入且找不到选项 "${value}"。当前可选项: ${available.join(', ') || '（未见选项）'}`,
+        };
+      }
+      return act(`click(${pyStr(hit.browsergym_id!)})`);
     },
     invokeAction: clickRef,
   };

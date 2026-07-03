@@ -26,7 +26,7 @@ const ACTION_ROLES = new Set(['button', 'link', 'menuitem', 'tab']);
 const CONTROL_ROLES = new Set(['textbox', 'searchbox', 'combobox', 'checkbox', 'radio', 'spinbutton', 'slider']);
 const OBJECT_ROLES = new Set(['listitem', 'row', 'article']);
 const SURFACE_ROLES = new Set(['status', 'alert', 'region']);
-const HIGH_RISK = /delete|remove|destroy|删除|删|清空|移除|pay|支付|purchase|checkout|confirm|确认|submit|提交|发送|send/i;
+const HIGH_RISK = /delete|remove|destroy|删除|删|清空|移除|pay|支付|purchase|checkout|confirm|确认|submit|提交|发送|send|save|保存/i;
 const MAX_LABEL = 80;
 
 const clip = (s: string): string => (s.length > MAX_LABEL ? `${s.slice(0, MAX_LABEL - 1)}…` : s);

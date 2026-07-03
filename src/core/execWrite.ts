@@ -77,6 +77,7 @@ export async function executeWrite(
         actionRef: req.refId,
         label: `${targetNode?.label ?? req.refId}${note}`,
         expectedEvidence: [`执行 ${name} 后页面应发生可观察变化`],
+        reason: highRisk ? 'high-risk' : 'inferred',
       };
       ledger.record({ kind: 'intent', refId: req.refId, label: intent.label, expectedEvidence: intent.expectedEvidence });
       steps.push({ type: 'held', tool: req.tool, refId: req.refId, intent });

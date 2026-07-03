@@ -67,6 +67,16 @@ describe('inferFromAxTree——BrowserGym AXTree → PageSnapshot', () => {
     expect(withBid.length).toBe(snapshot.actions.length); // action 必带可执行句柄
   });
 
+  it('提交类动词（save/保存 与 submit/delete 同族——持久化状态变更）推断为高危', () => {
+    const nodes: AxNode[] = [
+      N('1', 'RootWebArea', '', { childIds: ['2', '3'] }),
+      N('2', 'button', 'Save', { browsergym_id: 'a1' }),
+      N('3', 'button', '保存草稿', { browsergym_id: 'a2' }),
+    ];
+    const { snapshot } = inferFromAxTree(nodes, '/p');
+    expect(snapshot.actions.map((a) => a.risk)).toEqual(['high', 'high']);
+  });
+
   it('链接组 li（内容全为多个链接=展开的菜单）：不吞为对象，逐链接推断为 action', () => {
     const nodes: AxNode[] = [
       N('1', 'RootWebArea', '', { childIds: ['2'] }),

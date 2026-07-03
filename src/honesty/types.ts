@@ -2,6 +2,8 @@ export interface Intent {
   actionRef: string;
   label: string;
   expectedEvidence: string[];
+  /** held 缘由：高危动作 vs 仅因来源是推断（未声明契约）。宿主可按此决定确认形式的轻重。 */
+  reason?: 'high-risk' | 'inferred';
 }
 
 export interface Evidence {

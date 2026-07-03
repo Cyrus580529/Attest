@@ -7,7 +7,7 @@ import type { ActionNode, ControlNode, ObjectNode, PageSnapshot, Risk, SurfaceNo
 import { RefMinter } from './refs';
 import { collectScopes, queryAllDeep } from './queryAllDeep';
 
-const HIGH_RISK = /delete|remove|destroy|删除|删|清空|移除|pay|支付|purchase|checkout|confirm|确认|submit|提交|发送|send/i;
+const HIGH_RISK = /delete|remove|destroy|删除|删|清空|移除|pay|支付|purchase|checkout|confirm|确认|submit|提交|发送|send|save|保存/i;
 const MAX_LABEL = 80;
 
 function clean(s: string | null | undefined): string {
