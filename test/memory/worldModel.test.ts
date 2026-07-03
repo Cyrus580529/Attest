@@ -53,6 +53,13 @@ describe('genericExpectation（先验期望的泛化形：剥实例 id/具体值
     expect(genericExpectation('surface surface:status changed')).toBe('surface surface:status changed');
   });
 
+  it('control/action/surface 出现/消失：剥 #N 去重后缀（位置性实例标记），无后缀原样', () => {
+    expect(genericExpectation('control appeared: control:Select an item#1')).toBe('control appeared: control:Select an item');
+    expect(genericExpectation('control gone: control:OFFICE PHONE')).toBe('control gone: control:OFFICE PHONE');
+    expect(genericExpectation('action appeared: action:Save#2')).toBe('action appeared: action:Save');
+    expect(genericExpectation('surface appeared: surface:toast')).toBe('surface appeared: surface:toast');
+  });
+
   it('泛化形必须是对应实际 diff 的子串（predict 跨实例命中的前提）', () => {
     const cases: [string, string][] = [
       ['object appeared: object:apply:1', 'object appeared: object:apply:2'],

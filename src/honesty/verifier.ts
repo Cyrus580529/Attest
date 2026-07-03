@@ -8,10 +8,17 @@ export function diffSnapshots(before: PageSnapshot, after: PageSnapshot): Eviden
     details.push(`url: ${before.url} → ${after.url}`);
   }
 
-  const beforeObj = new Set(before.objects.map((o) => o.ref.id));
-  const afterObj = new Set(after.objects.map((o) => o.ref.id));
-  for (const id of afterObj) if (!beforeObj.has(id)) details.push(`object appeared: ${id}`);
-  for (const id of beforeObj) if (!afterObj.has(id)) details.push(`object gone: ${id}`);
+  // 四类节点的出现/消失都是可观察变化——tab/手风琴/向导换面板时对象可能纹丝不动、
+  // 换掉的是控件和动作；toast/告示则是 surface 出现。只看对象会对这些全盲。
+  const setDiff = (kind: string, beforeIds: Set<string>, afterIds: Set<string>): void => {
+    for (const id of afterIds) if (!beforeIds.has(id)) details.push(`${kind} appeared: ${id}`);
+    for (const id of beforeIds) if (!afterIds.has(id)) details.push(`${kind} gone: ${id}`);
+  };
+  const ids = (xs: readonly { ref: { id: string } }[]): Set<string> => new Set(xs.map((x) => x.ref.id));
+  setDiff('object', ids(before.objects), ids(after.objects));
+  setDiff('control', ids(before.controls), ids(after.controls));
+  setDiff('action', ids(before.actions), ids(after.actions));
+  setDiff('surface', ids(before.surfaces), ids(after.surfaces));
 
   const beforeCtrl = new Map(before.controls.map((c) => [c.ref.id, c.value]));
   for (const c of after.controls) {

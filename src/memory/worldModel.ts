@@ -43,6 +43,8 @@ interface Entry {
 export function genericExpectation(detail: string): string {
   const obj = /^(object (?:appeared|gone): object:[^:]+):/.exec(detail);
   if (obj) return obj[1]!;
+  const set = /^((?:control|action|surface) (?:appeared|gone): .+?)#\d+$/.exec(detail);
+  if (set) return set[1]!;
   const ctrl = /^(control control:.+?): /.exec(detail);
   if (ctrl) return ctrl[1]!;
   if (detail.startsWith('url: ')) return 'url:';
