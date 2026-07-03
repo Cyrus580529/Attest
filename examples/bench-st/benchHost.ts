@@ -54,9 +54,12 @@ export function createBenchHostAdapter(deps: BenchHostDeps): HostAdapter {
     obs = await deps.execute(action);
     const err = obs.last_action_error?.trim(); // settle 前捕获——noop 会覆盖字段
     let snapshot = refresh();
-    // 自适应 settle：动作成功但 obs 还没见到变化时才补 noop 等渲染——bench 的任务
-    // 步数预算硬（trajectory≥20 即终局），效果已可见就别再烧一步。
-    if (settle && !err && !diffSnapshots(prev, snapshot).changed) {
+    // 自适应 settle：动作成功但 obs 还没见到"内容"变化时补 noop 等渲染——bench 步数预算硬
+    // （trajectory≥20 即终局），内容已可见就别再烧一步。但「只有 URL 变、节点没变」= 导航
+    // 刚起、内容异步还没到（legacy iframe 表单实测），必须 settle 等它，否则表单字段照不到。
+    const ev = diffSnapshots(prev, snapshot);
+    const urlChanged = ev.details.some((d) => d.startsWith('url:'));
+    if (settle && !err && (!ev.changed || urlChanged)) {
       obs = await deps.execute(settle);
       snapshot = refresh();
     }

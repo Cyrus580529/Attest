@@ -84,6 +84,30 @@ describe('BenchHostAdapter——obs→快照、写→BrowserGym 动作串', () =
     expect(r.ok).toBe(true);
   });
 
+  it('导航中（仅 URL 变、内容未渲染）仍 settle——异步表单字段才照得到', async () => {
+    // 点击后 URL 立刻变但字段还没渲染；settle 后表单控件才出现。不能因"URL 变了"就跳过 settle。
+    const navObs: BenchObs = { url: '/form', axtree_object: { nodes: [N('1', 'RootWebArea', '', { childIds: [] })] } };
+    const settledObs: BenchObs = {
+      url: '/form',
+      axtree_object: {
+        nodes: [
+          N('1', 'RootWebArea', '', { childIds: ['2', '3'] }),
+          N('2', 'textbox', '主题', { browsergym_id: 'f1', value: { value: '' } }),
+          N('3', 'textbox', '日期', { browsergym_id: 'f2', value: { value: '' } }),
+        ],
+      },
+    };
+    const sent: string[] = [];
+    const host = createBenchHostAdapter({
+      initialObs: obs1,
+      execute: async (a) => { sent.push(a); return a === 'noop(700)' ? settledObs : navObs; },
+    });
+    const save = host.snapshot().actions.find((x) => x.label === '保存')!;
+    const r = await host.invokeAction(save.ref);
+    expect(sent).toEqual(['click("a51")', 'noop(700)']); // 仅 URL 变仍 settle
+    expect(r.snapshot.controls.map((c) => c.name)).toContain('主题'); // 表单字段照到了
+  });
+
   const NOT_INPUT = 'Error: Locator.fill: Error: Element is not an <input>, <textarea> or [contenteditable] element';
   const selObs = (value: string, extraNodes: AxNode[] = [], err?: string): BenchObs => ({
     url: '/crm',
