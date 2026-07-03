@@ -32,14 +32,15 @@ const MAX_LABEL = 80;
 const clip = (s: string): string => (s.length > MAX_LABEL ? `${s.slice(0, MAX_LABEL - 1)}…` : s);
 const clean = (s: unknown): string => String(s ?? '').replace(/\s+/g, ' ').trim();
 
-function isHidden(n: AxNode): boolean {
-  if (n.ignored) return true;
+/** hidden 属性 = 真不可见，整棵剪。ignored 是 CDP 的"本节点不入树"——跳过自己、必须继续下钻
+ *（SuiteCRM 主帧的树顶就是个 ignored 'none' 包装，按 hidden 剪会剪掉整页——真实 bench 夹具抓到的）。 */
+function isPruned(n: AxNode): boolean {
   return (n.properties ?? []).some((p) => p.name === 'hidden' && p.value?.value === true);
 }
 
 /** 自身 name + 后代文本拼接（有界深度，防环）。 */
 function textOf(n: AxNode, byId: Map<string, AxNode>, depth = 6): string {
-  if (depth <= 0 || isHidden(n)) return '';
+  if (depth <= 0 || isPruned(n)) return '';
   const parts = [clean(n.name?.value)];
   for (const cid of n.childIds ?? []) {
     const child = byId.get(cid);
@@ -63,7 +64,12 @@ export function inferFromAxTree(nodes: AxNode[], url: string): AxTreeInferResult
   let oi = 0;
 
   const visit = (n: AxNode | undefined): void => {
-    if (!n || isHidden(n)) return; // hidden/ignored 整棵剪掉
+    if (!n || isPruned(n)) return; // hidden 整棵剪掉
+    if (n.ignored) {
+      // CDP ignored：本节点不入树但子树照常——只下钻，不参与分类
+      for (const cid of n.childIds ?? []) visit(byId.get(cid));
+      return;
+    }
     const role = clean(n.role?.value);
     const name = clean(n.name?.value);
 

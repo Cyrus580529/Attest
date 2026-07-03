@@ -42,7 +42,7 @@ describe('BenchHostAdapter——obs→快照、写→BrowserGym 动作串', () =
     const before = host.snapshot();
     const save = before.actions.find((x) => x.label === '保存')!;
     const r = await host.invokeAction(save.ref);
-    expect(sent).toEqual(["click('a51')"]);
+    expect(sent).toEqual(['click("a51")']);
     expect(r.ok).toBe(true);
     expect(r.snapshot.surfaces[0]?.text).toBe('已保存');
   });
@@ -55,7 +55,7 @@ describe('BenchHostAdapter——obs→快照、写→BrowserGym 动作串', () =
     });
     const ctrl = host.snapshot().controls[0]!;
     await host.setControl(ctrl.ref, "O'Brien\n第二行");
-    expect(sent).toEqual(["fill('b12', 'O\\'Brien 第二行')"]);
+    expect(sent).toEqual(['fill("b12", "O\'Brien 第二行")']);
   });
 
   it('快照可重照（同 obs 两照 id 集一致）；bid 缺失 → ok:false 不发动作', async () => {
@@ -66,7 +66,8 @@ describe('BenchHostAdapter——obs→快照、写→BrowserGym 动作串', () =
     expect(r.ok).toBe(false);
   });
 
-  it('pyStr 转义单引号与反斜杠', () => {
-    expect(pyStr(String.raw`a\b'c`)).toBe(String.raw`'a\\b\'c'`);
+  it('pyStr 是合法双引号字面量（反斜杠/双引号转义、换行压平）', () => {
+    expect(pyStr(String.raw`a\b"c`)).toBe(String.raw`"a\\b\"c"`);
+    expect(pyStr('x\ny')).toBe('"x y"');
   });
 });

@@ -8,6 +8,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.stdout.reconfigure(encoding="utf-8")  # Windows 控制台默认 GBK，narration 带 emoji 会炸
+sys.stderr.reconfigure(encoding="utf-8")
+
+# 双包结构：stwebagentbench（评测器/policy_context）是 bench 仓库根的顶层包，
+# 不随 pip 包安装——把仓库根挂进 sys.path（默认取 cwd，可用 ST_BENCH_REPO 覆盖）。
+sys.path.insert(0, os.environ.get("ST_BENCH_REPO", os.getcwd()))
+
 import gymnasium as gym
 from browsergym.core.action.highlevel import HighLevelActionSet
 from stwebagentbench.policy_context import format_policy_context
@@ -16,9 +23,17 @@ import browsergym.stwebagentbench  # noqa: F401  注册全部任务
 ATTEST_REPO = Path(os.environ.get("ATTEST_REPO", Path(__file__).resolve().parents[2]))
 
 
-def finish(message):
-    """Call when the task is done."""
-    send_message_to_user(message)  # noqa: F821  由 BrowserGym 注入
+send_message_to_user: callable = None  # 由 BrowserGym 注入
+
+
+def answer(message):
+    """
+    When the task is done, this function should be called
+
+    Examples:
+        answer("I finished the task.")
+    """
+    send_message_to_user(message)
 
 
 def slim_obs(obs):
@@ -32,7 +47,7 @@ def main():
     args = ap.parse_args()
 
     action_set = HighLevelActionSet(
-        custom_actions=[finish], subsets=["bid", "chat", "nav", "custom"], strict=False,
+        custom_actions=[answer], subsets=["bid", "chat", "nav", "custom"], strict=False,
         multiaction=False, demo_mode="off",
     )
     env = gym.make(
@@ -57,9 +72,11 @@ def main():
     violations, terminated, truncated, reward = [], False, False, 0.0
 
     def collect(info):
-        for r in (info or {}).get("safety_report", []):
-            if r.get("violated"):
-                violations.append(r)
+        # env 每步对全轨迹重评并给出完整报告——只有最新一份是权威，累加会重复计数
+        nonlocal_report = (info or {}).get("safety_report")
+        if nonlocal_report is not None:
+            violations.clear()
+            violations.extend(r for r in nonlocal_report if r.get("violated"))
 
     for line in node.stdout:
         line = line.strip()
@@ -73,9 +90,9 @@ def main():
             if terminated or truncated:
                 break
         elif msg["op"] == "finish":
-            answer = (msg.get("answer") or "Done.").replace("'", "\\'")
+            final = json.dumps((msg.get("answer") or "Done.").replace("\n", " "))
             if not (terminated or truncated):
-                obs, reward, terminated, truncated, info = env.step(f"finish('{answer}')")
+                obs, reward, terminated, truncated, info = env.step(f"answer({final})")
                 collect(info)
             print(f"\n[attest] outcome={msg.get('outcome')} narration={msg.get('narration', '')[:120]}")
             break

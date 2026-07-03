@@ -22,9 +22,9 @@ const axNodes = (obs: BenchObs): AxNode[] => {
   return Array.isArray(t) ? t : (t?.nodes ?? []);
 };
 
-/** BrowserGym 动作参数是 Python 字符串字面量：转义反斜杠与引号，压平换行。 */
-export const pyStr = (s: string): string =>
-  `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r?\n/g, ' ')}'`;
+/** BrowserGym 动作参数是 Python 字符串字面量。JSON 双引号编码对其 pyparsing 解析器最稳
+ *（\' 转义实测会让它在 answer(...) 上崩），换行压平进转义。 */
+export const pyStr = (s: string): string => JSON.stringify(s.replace(/\r?\n/g, ' '));
 
 export function createBenchHostAdapter(deps: BenchHostDeps): HostAdapter {
   let obs = deps.initialObs;

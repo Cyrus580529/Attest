@@ -48,7 +48,26 @@ describe('inferFromAxTree——BrowserGym AXTree → PageSnapshot', () => {
     expect(snapshot.actions.map((a) => a.label)).toEqual(['客户列表', '导出']);
   });
 
-  it('hidden/ignored 节点整棵剪掉', () => {
+  it('ignored 包装节点：跳过自身、继续下钻（CDP 语义——SuiteCRM 主帧树顶就是它）', () => {
+    const nodes: AxNode[] = [
+      N('1', 'RootWebArea', '', { childIds: ['2'] }),
+      { ...N('2', 'none', '', { childIds: ['3'] }), ignored: true },
+      N('3', 'button', '登录', { browsergym_id: 'a1' }),
+    ];
+    const { snapshot } = inferFromAxTree(nodes, '/p');
+    expect(snapshot.actions.map((a) => a.label)).toEqual(['登录']);
+  });
+
+  it('真实 bench AXTree（SuiteCRM 任务235，162 节点）：快照非空、link 带 bid', async () => {
+    const { readFileSync } = await import('node:fs');
+    const nodes = JSON.parse(readFileSync('test/fixtures/real/ax-suitecrm-235.json', 'utf8')) as AxNode[];
+    const { snapshot, bids } = inferFromAxTree(nodes, 'http://localhost:8080/');
+    expect(snapshot.actions.length).toBeGreaterThan(3);
+    const withBid = snapshot.actions.filter((a) => bids.has(a.ref.id));
+    expect(withBid.length).toBe(snapshot.actions.length); // action 必带可执行句柄
+  });
+
+  it('hidden 属性节点整棵剪掉', () => {
     const nodes: AxNode[] = [
       N('1', 'RootWebArea', '', { childIds: ['2', '3'] }),
       N('2', 'button', '可见', { browsergym_id: 'a1' }),
