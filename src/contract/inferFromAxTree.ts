@@ -83,9 +83,12 @@ export function inferFromAxTree(nodes: AxNode[], url: string): AxTreeInferResult
 
   // 无名控件的标签认领：SuiteCRM 等表单不做 label 关联，字段标题是 DFS 序上紧邻的
   // 前置 StaticText——途中记住最近短文本，控件缺名时在近距离内认领（实测 15/15 命中）。
+  // 只记「像标签」的文本（含字母）：必填星号 "*"、字段值（日期 07/03/2026）、时间分隔符
+  // " : " 都紧邻控件却不是标签，会冒充字段名——按「无字母即噪音」跳过（legacy 会议表单实证）。
   let visitIdx = 0;
   let lastText: { text: string; at: number } | null = null;
   const NEARBY = 10;
+  const looksLikeLabel = (s: string): boolean => /[a-zA-Z一-鿿]/.test(s);
 
   const visit = (n: AxNode | undefined): void => {
     if (!n || isPruned(n)) return; // hidden 整棵剪掉
@@ -97,7 +100,7 @@ export function inferFromAxTree(nodes: AxNode[], url: string): AxTreeInferResult
     }
     const role = clean(n.role?.value);
     const name = clean(n.name?.value);
-    if (role === 'StaticText' && name && name.length <= 40) lastText = { text: name, at: visitIdx };
+    if (role === 'StaticText' && name && name.length <= 40 && looksLikeLabel(name)) lastText = { text: name, at: visitIdx };
 
     if (ACTION_ROLES.has(role) && n.browsergym_id) {
       const label = clip(name || textOf(n, byId));

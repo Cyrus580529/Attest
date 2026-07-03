@@ -182,6 +182,29 @@ describe('inferFromAxTree——BrowserGym AXTree → PageSnapshot', () => {
     expect(labels.some((l) => /^(\S+) \1$/.test(l))).toBe(false); // 无 "Accounts Accounts" 式重复
   });
 
+  it('标签认领跳过噪音（必填星号/值/分隔符）——认领含字母的真标签', () => {
+    // 表单里控件前紧邻的常是 "*"(必填)、值、" : "(分隔符)，真标签在更前面
+    const nodes: AxNode[] = [
+      N('1', 'RootWebArea', '', { childIds: ['2', '3', '4'] }),
+      N('2', 'StaticText', 'SUBJECT:'),
+      N('3', 'StaticText', '*'), // 必填星号——不该被认领为标签
+      N('4', 'textbox', '', { browsergym_id: 'b1' }),
+    ];
+    const { snapshot } = inferFromAxTree(nodes, '/p');
+    expect(snapshot.controls[0]?.label).toBe('SUBJECT:'); // 跳过 "*"，认领 SUBJECT:
+  });
+
+  it('真实夹具：排会议表单（legacy iframe）空名控件认领到真字段名，不是 */日期/分隔符', async () => {
+    const { readFileSync } = await import('node:fs');
+    const obs = JSON.parse(readFileSync('test/fixtures/real/ax-suitecrm-meeting-form.json', 'utf8'));
+    const nodes = (obs.axtree_object?.nodes ?? obs.axtree_object) as AxNode[];
+    const { snapshot } = inferFromAxTree(nodes, obs.url as string);
+    const names = snapshot.controls.map((c) => c.name);
+    for (const want of ['DURATION:', 'LOCATION:', 'DESCRIPTION:', 'STATUS:']) expect(names).toContain(want);
+    expect(names).not.toContain('*'); // 星号不再冒充字段名
+    expect(names.some((n) => /^\d{2}\/\d{2}\/\d{4}$/.test(n))).toBe(false); // 日期值不再冒充字段名
+  });
+
   it('hidden 属性节点整棵剪掉', () => {
     const nodes: AxNode[] = [
       N('1', 'RootWebArea', '', { childIds: ['2', '3'] }),
