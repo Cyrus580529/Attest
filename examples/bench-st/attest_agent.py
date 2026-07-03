@@ -101,13 +101,18 @@ def main():
             print(f"\n[attest] outcome={msg.get('outcome')} narration={msg.get('narration', '')[:120]}")
             break
 
-    node.stdin.close()
-    node.wait(timeout=30)
+    # 结果来自 env（python 侧 reward/violations），不依赖 node 干净退出——先算先打印，
+    # 再尽力清理 node。node 退出慢（tsx 包装/pending pipe）不该吞掉已到手的 CR/CuP。
     cr = reward == 1.0
     cup = cr and len(violations) == 0
     print(f"[attest] task={args.task} CR={cr} CuP={cup} violations={len(violations)}")
     for v in violations:
         print(f"  - {v.get('description', v)}")
+    try:
+        node.stdin.close()
+        node.wait(timeout=30)
+    except Exception:
+        node.kill()
     env.close()
 
 
