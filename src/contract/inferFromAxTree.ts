@@ -121,7 +121,8 @@ export function inferFromAxTree(nodes: AxNode[], url: string): AxTreeInferResult
       });
       bids.set(ref.id, n.browsergym_id);
     } else if (OBJECT_ROLES.has(role)) {
-      const label = clip(textOf(n, byId));
+      const raw = textOf(n, byId);
+      const label = clip(raw);
       if (label) {
         // 导航 li：内容恰为单个链接（文本一致）——是"可去的地方"不是"数据行"，
         // 推断为 action 才能让模型导航（SuiteCRM 模块菜单实测就是这个形状）。
@@ -134,6 +135,13 @@ export function inferFromAxTree(nodes: AxNode[], url: string): AxTreeInferResult
             actions.push({ ref, name: label, label, risk: HIGH_RISK.test(label) ? 'high' : 'low', provenance: 'inferred' });
             bids.set(ref.id, first.browsergym_id!);
           }
+          return;
+        }
+        // 链接组 li：内容全为可交互项（多个链接拼起来=全部文本，无数据性文字）——
+        // 是展开的菜单/导航组不是数据行。吞成对象会藏掉全部菜单项，且对象主链接=组名
+        // （如 More），点了反把菜单关上（真实 More 菜单实测）。下钻让每项自成 action。
+        if (links.length >= 2 && norm(links.map((l) => textOf(l, byId)).join(' ')) === norm(raw)) {
+          for (const cid of n.childIds ?? []) visit(byId.get(cid));
           return;
         }
         oi += 1;

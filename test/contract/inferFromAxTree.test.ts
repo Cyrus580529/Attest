@@ -67,6 +67,33 @@ describe('inferFromAxTree——BrowserGym AXTree → PageSnapshot', () => {
     expect(withBid.length).toBe(snapshot.actions.length); // action 必带可执行句柄
   });
 
+  it('链接组 li（内容全为多个链接=展开的菜单）：不吞为对象，逐链接推断为 action', () => {
+    const nodes: AxNode[] = [
+      N('1', 'RootWebArea', '', { childIds: ['2'] }),
+      N('2', 'listitem', '', { browsergym_id: 'li1', childIds: ['3', '4', '5'] }),
+      N('3', 'link', 'More', { browsergym_id: 'm0' }),
+      N('4', 'link', 'Tasks', { browsergym_id: 'm1' }),
+      N('5', 'link', 'Notes', { browsergym_id: 'm2' }),
+    ];
+    const { snapshot, bids } = inferFromAxTree(nodes, '/p');
+    expect(snapshot.actions.map((a) => a.label)).toEqual(['More', 'Tasks', 'Notes']);
+    expect(bids.get(snapshot.actions[1]!.ref.id)).toBe('m1');
+    expect(snapshot.objects).toHaveLength(0); // 不再吞成巨型对象（其主链接句柄=More，点了反把菜单关上）
+  });
+
+  it('真实夹具：SuiteCRM More 菜单展开后，Tasks/Calls 等菜单项是可点 action', async () => {
+    const { readFileSync } = await import('node:fs');
+    const obs = JSON.parse(readFileSync('test/fixtures/real/ax-suitecrm-nav-more-open.json', 'utf8'));
+    const nodes = (obs.axtree_object?.nodes ?? obs.axtree_object) as AxNode[];
+    const { snapshot, bids } = inferFromAxTree(nodes, obs.url as string);
+    const tasks = snapshot.actions.find((a) => a.label === 'Tasks');
+    expect(tasks).toBeDefined();
+    expect(bids.get(tasks!.ref.id)).toBeTruthy();
+    expect(snapshot.actions.some((a) => a.label === 'Calls')).toBe(true);
+    // 菜单 blob 不再作为对象出现
+    expect(snapshot.objects.some((o) => o.label.includes('Campaigns') && o.label.includes('Tasks'))).toBe(false);
+  });
+
   it('导航 li（内容恰为单个链接）推断为 action 而非对象——SuiteCRM 模块菜单是这个形状', () => {
     const nodes: AxNode[] = [
       N('1', 'RootWebArea', '', { childIds: ['2'] }),
