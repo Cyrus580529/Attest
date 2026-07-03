@@ -3,6 +3,12 @@ dist/
 *.log
 .DS_Store
 
+# 密钥/本地环境——绝不入库（开源前置：防 API key 误提交）
+.env
+.env.*
+!.env.example
+*.local
+
 # repl 持久化的世界模型先验（本地缓存，不入库）
 examples/.attest-worldmodel.json
 .scratch/
