@@ -66,16 +66,24 @@ export function inferContract(root: ParentNode, url: string): InferResult {
     elements.set(ref.id, el);
   }
 
-  // 动作：按钮 / role=button / submit / 链接。同标签去重只留第一个（真实页面同名链接成群）。
+  // 动作：按钮 / role=button / submit / 链接 / role=tab。同标签去重只留第一个。
+  // nav 归因：role=tab，或身处 <nav>/[role=navigation|menubar|tablist] 地标内 → category:'nav'
+  // （和上面"nav/footer 里的 li 不当数据对象"同一条真实前提：导航地标里的东西是切视图，不是变更）。
   const seenAction = new Set<string>();
-  for (const el of queryAllDeep(root, 'button, [role="button"], input[type="submit"], input[type="button"], a[href]', scopes)) {
+  for (const el of queryAllDeep(
+    root,
+    'button, [role="button"], input[type="submit"], input[type="button"], a[href], [role="tab"]',
+    scopes,
+  )) {
     if (isHidden(el)) continue;
     const label = clip(clean(el.textContent) || clean(el.getAttribute('aria-label')) || clean((el as HTMLInputElement).value));
     if (!label || seenAction.has(label)) continue;
     seenAction.add(label);
     const risk: Risk = HIGH_RISK.test(label) ? 'high' : 'low';
     const ref = minter.mint('action', label);
-    actions.push({ ref, name: label, label, risk, provenance: 'inferred' });
+    const isNavLandmark = el.closest('nav, [role="navigation"], [role="menubar"], [role="tablist"]') !== null;
+    const category: 'nav' | undefined = el.getAttribute('role') === 'tab' || isNavLandmark ? 'nav' : undefined;
+    actions.push({ ref, name: label, label, risk, provenance: 'inferred', category });
     elements.set(ref.id, el);
   }
 

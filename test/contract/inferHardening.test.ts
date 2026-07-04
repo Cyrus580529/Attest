@@ -51,6 +51,20 @@ describe('inferContract 硬化（合成例）', () => {
     const { snapshot } = inferContract(document.body, '/p');
     expect(snapshot.objects.map((o) => o.label)).toEqual(['故事一', '故事二']);
   });
+
+  it('<nav> 里的链接打上 category:nav；<nav> 外的按钮不受影响', () => {
+    document.body.innerHTML = '<nav><a href="/accounts">Accounts</a></nav><button>Save</button>';
+    const { snapshot } = inferContract(document.body, '/p');
+    expect(snapshot.actions.find((a) => a.label === 'Accounts')?.category).toBe('nav');
+    expect(snapshot.actions.find((a) => a.label === 'Save')?.category).toBeUndefined();
+  });
+
+  it('role=tab 元素被识别为 action 且打上 category:nav', () => {
+    document.body.innerHTML = '<div role="tab">Overview</div>';
+    const { snapshot } = inferContract(document.body, '/p');
+    expect(snapshot.actions[0]?.label).toBe('Overview');
+    expect(snapshot.actions[0]?.category).toBe('nav');
+  });
 });
 
 // ── 真实页面集成：质量水位线 ──
