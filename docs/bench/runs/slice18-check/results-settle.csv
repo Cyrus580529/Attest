@@ -1,0 +1,4 @@
+task,CR,CuP,violations,outcome,status,seconds
+241,False,False,2,,ok,122
+242,False,False,1,completed,ok,55
+240,False,False,3,completed,ok,96
