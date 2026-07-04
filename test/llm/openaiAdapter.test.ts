@@ -46,10 +46,38 @@ describe('openaiAdapter — 解析', () => {
     expect((captured!.init.headers as Record<string, string>).Authorization).toBe('Bearer sk-test');
   });
 
-  it('响应缺 choices/message → 抛 malformed（不静默返空）', async () => {
+  it('响应缺 choices/message → 抛 malformed（不静默返空），错误信息带原始响应片段方便诊断', async () => {
     const fetchImpl = (async () => new Response(JSON.stringify({ foo: 1 }), { status: 200 })) as unknown as typeof fetch;
     const adapter = createOpenAiAdapter({ apiKey: 'sk-test', fetchImpl });
     await expect(adapter.step([], [])).rejects.toThrow(/malformed|畸形|choices/i);
+    // 真实事故：Anthropic 的 OpenAI 兼容层返回畸形响应时，此前的报错吞掉了原始 body，
+    // 只能靠猜（如缺 max_tokens）——现在错误信息里必须带上实际收到的内容。
+    await expect(adapter.step([], [])).rejects.toThrow(/foo/);
+  });
+
+  it('请求体默认带 max_tokens（部分 OpenAI 兼容端点——如 Anthropic 的兼容层——要求必填）', async () => {
+    let captured: { init: RequestInit } | null = null;
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      captured = { init };
+      return okBody();
+    }) as unknown as typeof fetch;
+    const adapter = createOpenAiAdapter({ apiKey: 'sk-test', fetchImpl });
+    await adapter.step([{ role: 'user', content: 'hi' }], []);
+    const body = JSON.parse(String(captured!.init.body));
+    expect(typeof body.max_tokens).toBe('number');
+    expect(body.max_tokens).toBeGreaterThan(0);
+  });
+
+  it('maxTokens 选项可覆盖默认值', async () => {
+    let captured: { init: RequestInit } | null = null;
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      captured = { init };
+      return okBody();
+    }) as unknown as typeof fetch;
+    const adapter = createOpenAiAdapter({ apiKey: 'sk-test', maxTokens: 1234, fetchImpl });
+    await adapter.step([{ role: 'user', content: 'hi' }], []);
+    const body = JSON.parse(String(captured!.init.body));
+    expect(body.max_tokens).toBe(1234);
   });
 });
 

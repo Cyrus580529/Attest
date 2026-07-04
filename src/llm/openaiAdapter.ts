@@ -9,6 +9,9 @@ export interface OpenAiAdapterOptions {
   maxRetries?: number;
   /** 单次请求超时（ms），超时中止并按可重试处理。默认 60000。 */
   timeoutMs?: number;
+  /** 请求体的 max_tokens。默认 4096——部分 OpenAI 兼容端点（如 Anthropic 的兼容层）此字段必填，
+   * 缺省会导致响应畸形；OpenAI/DeepSeek 原生端点把它当普通可选参数，不受影响。 */
+  maxTokens?: number;
   /** 指数退避基数（ms）。默认 500。 */
   backoffBaseMs?: number;
   /** 退避上限（ms）。默认 15000。 */
@@ -87,6 +90,7 @@ export function createOpenAiAdapter(options: OpenAiAdapterOptions): LlmAdapter {
   const doFetch = options.fetchImpl ?? fetch;
   const maxRetries = options.maxRetries ?? 3;
   const timeoutMs = options.timeoutMs ?? 60_000;
+  const maxTokens = options.maxTokens ?? 4096;
   const backoffBaseMs = options.backoffBaseMs ?? 500;
   const maxBackoffMs = options.maxBackoffMs ?? 15_000;
   const sleep = options.sleepImpl ?? defaultSleep;
@@ -121,10 +125,20 @@ export function createOpenAiAdapter(options: OpenAiAdapterOptions): LlmAdapter {
   async function attemptOnce(body: string): Promise<LlmTurn> {
     const res = await fetchWithTimeout(body); // 网络/超时错误直接向上抛（视为可重试）
     if (res.ok) {
-      const data = (await res.json().catch(() => null)) as OpenAiResponse | null;
+      const rawText = await res.text();
+      const data = ((): OpenAiResponse | null => {
+        try {
+          return JSON.parse(rawText) as OpenAiResponse;
+        } catch {
+          return null;
+        }
+      })();
       const message = data?.choices?.[0]?.message;
       if (!message) {
-        throw new LlmRequestError('OpenAI 响应畸形（malformed）：缺 choices/message', res.status, false);
+        // 真实事故：不同"OpenAI 兼容"端点（如 Anthropic 的兼容层）畸形时形状各不相同——
+        // 之前的报错吞掉了原始响应，只能靠猜（比如少传了 max_tokens）。带上原文片段自证。
+        const snippet = rawText.length > 300 ? `${rawText.slice(0, 300)}…` : rawText;
+        throw new LlmRequestError(`OpenAI 响应畸形（malformed）：缺 choices/message；原始响应：${snippet}`, res.status, false);
       }
       const toolCalls: LlmToolCall[] = (message.tool_calls ?? []).map((c) => ({
         id: c.id,
@@ -151,6 +165,7 @@ export function createOpenAiAdapter(options: OpenAiAdapterOptions): LlmAdapter {
         model,
         messages: messages.map(toOpenAiMessage),
         tools: tools.map((t) => ({ type: 'function', function: t })),
+        max_tokens: maxTokens,
       });
 
       for (let attempt = 0; ; attempt++) {
