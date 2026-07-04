@@ -15,7 +15,7 @@ export type LedgerEntry =
   | { kind: 'observe'; tool: string; detail: string }
   | { kind: 'intent'; refId: string; label: string; expectedEvidence: string[] }
   | { kind: 'grant'; refId: string; approved: boolean; scope?: 'once' | 'all' }
-  | { kind: 'write'; tool: string; refId: string; verified: boolean; evidence: string[] }
+  | { kind: 'write'; tool: string; refId: string; verified: boolean; evidence: string[]; navLike?: boolean }
   | { kind: 'clarify'; question: string; answered: boolean }
   | { kind: 'error'; tool: string; detail: string };
 

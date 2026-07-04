@@ -34,6 +34,27 @@ describe('executeWrite', () => {
     expect(ledger.entries.some((e) => e.kind === 'write' && e.verified)).toBe(true);
   });
 
+  it('nav 类型动作（<nav> 里的链接）执行后，账本记 navLike:true；普通动作不设', async () => {
+    document.body.innerHTML = '<nav><a href="/accounts">Accounts</a></nav><button>Save</button>';
+    const before = inferContract(document.body, '/p').snapshot;
+    document.body.innerHTML = '<p>已跳转</p>';
+    const after = inferContract(document.body, '/p2').snapshot;
+    const navRef = before.actions.find((a) => a.label === 'Accounts')!.ref.id;
+    const saveRef = before.actions.find((a) => a.label === 'Save')!.ref.id;
+
+    const host1 = new FakeHostAdapter(before, { [navRef]: after });
+    const ledger1 = new Ledger();
+    await executeWrite(host1, ledger1, APPROVE_ONCE, new Set(), { tool: 'invokeAction', refId: navRef });
+    const navEntry = ledger1.entries.find((e) => e.kind === 'write') as { navLike?: boolean } | undefined;
+    expect(navEntry?.navLike).toBe(true);
+
+    const host2 = new FakeHostAdapter(before, { [saveRef]: after });
+    const ledger2 = new Ledger();
+    await executeWrite(host2, ledger2, APPROVE_ONCE, new Set(), { tool: 'invokeAction', refId: saveRef });
+    const saveEntry = ledger2.entries.find((e) => e.kind === 'write') as { navLike?: boolean } | undefined;
+    expect(saveEntry?.navLike).toBeFalsy();
+  });
+
   it('写动作打开表单（多个输入字段出现）→ 工具结果提示"填完再提交、别就此完成"', async () => {
     // 点一个动作后，页面冒出一排空控件=打开了表单——治"开表单即假报完成"的早退
     const before = makeSnap(`<button data-agent-action="new">新建</button>`);

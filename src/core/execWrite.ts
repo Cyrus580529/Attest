@@ -5,7 +5,7 @@ import { resolveRef } from './refResolver';
 import { isHighRisk } from '../honesty/riskPolicy';
 import { diffSnapshots } from '../honesty/verifier';
 import { Ledger } from '../honesty/ledger';
-import type { Ref, RefKind } from '../types';
+import type { Ref, RefKind, ActionNode } from '../types';
 
 export interface WriteRequest {
   tool: 'setControl' | 'invokeAction';
@@ -66,6 +66,9 @@ export async function executeWrite(
       : before.actions.find((a) => a.ref.id === req.refId);
   const highRisk = req.tool === 'invokeAction' && isHighRisk(before, req.refId);
   const inferred = targetNode?.provenance === 'inferred';
+  // nav 归因：只有 invokeAction 会作用在 ActionNode 上；ControlNode 没有 category 概念，
+  // setControl 写永远 navLike=false（搜索框填值等，本轮不判定是否任务相关）。
+  const navLike = req.tool === 'invokeAction' && (targetNode as ActionNode | undefined)?.category === 'nav';
 
   if (highRisk || inferred) {
     const name = targetNode?.name ?? req.refId;
@@ -150,7 +153,7 @@ export async function executeWrite(
     await new Promise((r) => setTimeout(r, delay));
     evidence = diffSnapshots(preExec, host.snapshot());
   }
-  ledger.record({ kind: 'write', tool: req.tool, refId: req.refId, verified: evidence.changed, evidence: evidence.details });
+  ledger.record({ kind: 'write', tool: req.tool, refId: req.refId, verified: evidence.changed, evidence: evidence.details, navLike });
   steps.push({ type: 'action', tool: req.tool, refId: req.refId, verified: evidence.changed, evidence: evidence.details });
 
   // 表单打开信号（复用 diff 事实、非提示词）：一次写让多个输入字段涌现=多半打开了表单/对话框。
