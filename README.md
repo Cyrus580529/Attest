@@ -90,7 +90,7 @@ npm run build
 ```bash
 npm run demo      # visual demo: agent drives a live ticket board, evidence recorder alongside
                   #   (needs ATTEST_API_KEY in env; key stays in the dev server, never the browser)
-npm test          # 240 deterministic tests (FakeLlm + FakeHost), incl. a chaos suite
+npm test          # 313 deterministic tests (FakeLlm + FakeHost), incl. a chaos suite
 npm run typecheck # (fault injection: host/confirm failures must never crash the loop)
 npm run build     # emits dist/
 ```
@@ -236,7 +236,7 @@ exists today: contract layer (VOIX + native), single tool-calling read
 loop with lookahead, honesty layer (verifier + ledger + narration guard + high-risk held),
 TOCTOU-safe write path with settle-based verification, code-as-action with recipe priors,
 world-model priors with drift detection and self-healing, cross-session persistence
-(`toJSON` / `fromJSON`). **240 deterministic tests green** (incl. chaos fault-injection),
+(`toJSON` / `fromJSON`). **313 deterministic tests green** (incl. chaos fault-injection),
 live-accepted against a real model (`deepseek-v4-pro`) across happy paths, rich page shapes,
 adversarial scenarios, and drift. Design notes, bench reports and the live-acceptance
 checklist live in `docs/`.

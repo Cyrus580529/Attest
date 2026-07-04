@@ -1,5 +1,5 @@
 # Route B 桥·Python 侧：BrowserGym 主循环的真身。跑在 ST-WebAgentBench 的 uv 环境里：
-#   cd D:/Project/ST-WebAgentBench && uv run python D:/Project/Attest/examples/bench-st/attest_agent.py --task 235
+#   cd <path-to-ST-WebAgentBench> && uv run python <path-to-attest>/examples/bench-st/attest_agent.py --task 235
 # 职责：起 env → spawn Node(Attest agent) → 转发 obs/执行动作 → 收 safety_report → 报 CR/CuP。
 import argparse
 import json
