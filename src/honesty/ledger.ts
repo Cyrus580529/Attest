@@ -37,6 +37,17 @@ export function computeOutcome(entries: readonly LedgerEntry[]): Outcome {
   if (lastDoubt >= 0 && !entries.slice(lastDoubt + 1).some((e) => e.kind === 'write' && e.verified)) {
     return 'failed';
   }
+
+  // 有 verified 写，但清一色是导航类（navLike）——只是"去了个地方"，任务真正要求的
+  // 变更从未发生。和上面的 doubt 信号同一套宽容：只要序列里任意一次 verified 写不是
+  // 导航类，这条就不成立（不追究先后顺序）。完全不碰"空账本→completed"的既有默认
+  // （writes.length===0 时 hasVerified 为 false，这条规则天然不生效）。
+  const hasVerified = writes.some((w) => w.verified);
+  const hasSubstantiveVerified = writes.some((w) => w.verified && !w.navLike);
+  if (hasVerified && !hasSubstantiveVerified) {
+    return 'failed';
+  }
+
   if (deniedGrant && !writes.some((w) => w.verified)) return 'cancelled';
   return 'completed';
 }

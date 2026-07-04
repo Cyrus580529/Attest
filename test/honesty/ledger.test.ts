@@ -96,6 +96,23 @@ describe('computeOutcome', () => {
     ).toBe('completed');
   });
 
+  it('verified 写全部是导航类（navLike）→ failed，不算 completed', () => {
+    expect(
+      computeOutcome([
+        { kind: 'write', tool: 'invokeAction', refId: 'action:accounts', verified: true, evidence: ['url: /a → /accounts'], navLike: true },
+      ]),
+    ).toBe('failed');
+  });
+
+  it('verified 写里混了一次非导航的写（哪怕在导航写之前）→ completed，不受影响', () => {
+    expect(
+      computeOutcome([
+        { kind: 'write', tool: 'invokeAction', refId: 'action:delete', verified: true, evidence: ['object:lead:5 gone'], navLike: false },
+        { kind: 'write', tool: 'invokeAction', refId: 'action:accounts', verified: true, evidence: ['url: /a → /accounts'], navLike: true },
+      ]),
+    ).toBe('completed');
+  });
+
   it('高危被拒且无成功写 → cancelled', () => {
     expect(
       computeOutcome([
