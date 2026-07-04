@@ -227,6 +227,7 @@ Either way, a **new page** that implements the contract is drivable with **no ex
 | `narrationGuard` | The model's self-assessment (`goalMet`) can only downgrade `completed` → `failed`, never the reverse |
 | `FinishFacts` | The authoritative execution record, generated from the ledger — the final step carries `facts` (harness-generated, tamper-proof) *beside* `narration` (the model's own words, never edited): juxtaposition, not muzzling |
 | `WorldModel` / `RecipeBook` | Opt-in priors — learned (action → diff) and successful programs — injected into context to plan faster; never bypass the verifier. The `WorldModel` adjudicates every executed write at record time (hit / suspect / drift) and self-heals |
+| `serializeTrace` / `replayOutcome` | Turn a run's `AgentStep[]` into a stable, structured `trace.jsonl`; replay a saved trace's ledger through today's `computeOutcome` to catch outcome-logic regressions without spending an LLM call |
 
 ## Status
 

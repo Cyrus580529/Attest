@@ -84,12 +84,47 @@ One method: `step(messages, tools) => Promise<{ content, toolCalls }>`. The buil
 `createOpenAiAdapter` covers OpenAI-compatible endpoints (retry/backoff/429 included);
 wrap anything else so it emits tool calls in that shape.
 
+## Trace export and outcome replay
+
+`agent.run()` already yields every `AgentStep` (observation / action / held / clarify /
+finish …) as it happens — `serializeTrace` just wraps that sequence with a sequence
+number and timestamp, producing a stable, structured format you can persist (one JSON
+object per line — `trace.jsonl`). It's deliberately **not** a raw LLM-message or
+page-snapshot dump: no prompts, no full page HTML, just the tool calls, their
+verified/evidence outcome, and the final `FinishFacts`. The kernel only serializes —
+where you write it (file, log pipe, nowhere) is your call.
+
+```ts
+import { serializeTrace } from 'attest-agent';
+
+const steps = [];
+for await (const step of agent.run(goal)) steps.push(step);
+const trace = serializeTrace(steps); // TraceEvent[] — write it out however you like
+```
+
+Because the finish event's `facts`/`ledger` are captured verbatim, a saved trace can
+answer one useful question later without spending any LLM calls: **would this task's
+`outcome` still compute the same way under today's code?** `replayOutcome` re-runs
+`computeOutcome` against the recorded ledger and diffs it against what was recorded —
+a cheap regression check for changes to the ledger/outcome logic (it cannot detect
+drift in ref resolution or model decisions — that needs the full LLM/host replay this
+trace format deliberately doesn't capture).
+
+```ts
+import { replayOutcome } from 'attest-agent';
+
+const { recordedOutcome, replayedOutcome, matches } = replayOutcome(trace);
+```
+
+See `examples/bench-st/replayCheck.ts` for a batch CLI that runs this over a directory
+of saved traces.
+
 ## API stability (pre-1.0)
 
 | Tier | Surface | Promise |
 |---|---|---|
 | **Stable** | `createAgent`, `AgentStep`, `HostAdapter`, `HostResult`, `PageSnapshot`, `Ref`, `Outcome`, `LedgerEntry`, `FinishFacts`, `parseVoix`, `parseContract` | breaking changes only with a major bump and changelog entry |
-| **Settling** | `WorldModel`, `RecipeBook`, program AST (`runProgram`, `Node`), `checkHostContract` | shape may still move; changes called out in commits |
+| **Settling** | `WorldModel`, `RecipeBook`, program AST (`runProgram`, `Node`), `checkHostContract`, `serializeTrace`, `TraceEvent`, `replayOutcome`, `ReplayResult` | shape may still move; changes called out in commits |
 | **Internal** | anything not exported from `attest-agent` | no promises — don't deep-import |
 
 `test/index.test.ts` guards the export surface; if it's exported, it's at least Settling.

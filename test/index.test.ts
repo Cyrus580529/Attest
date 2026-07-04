@@ -15,6 +15,8 @@ describe('public API surface', () => {
       'createOpenAiAdapter',
       'createAgent',
       'serializeSnapshot',
+      'serializeTrace',
+      'replayOutcome',
     ] as const) {
       expect(typeof api[name]).toBe('function');
     }

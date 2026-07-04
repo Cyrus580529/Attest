@@ -40,6 +40,12 @@ export { createAgent } from './core/loop';
 export type { AgentStep, AgentOptions, FinishFacts } from './core/loop';
 export { serializeSnapshot } from './core/serialize';
 
+// ── 可观测性：trace 导出 / outcome 判定回归重放（宿主决定落盘/怎么用，内核只序列化）──
+export { serializeTrace } from './core/trace';
+export type { TraceEvent } from './core/trace';
+export { replayOutcome } from './core/replay';
+export type { ReplayResult } from './core/replay';
+
 // ── Code-as-Action：构造 / 校验 / 执行程序 ──
 export { validateProgram } from './core/program/types';
 export type { Program, Node, Query, Cond } from './core/program/types';
