@@ -155,8 +155,19 @@ trace 目录，报告 mismatch）。**冒烟验证**：构造了一份模拟"旧
 派上用场。**已知边界**：只测 outcome 判定层面的回归，测不出 ref 解析/模型决策层
 面的行为漂移（那需要完整重现，超出 trace 格式现有能力）。
 
-**排期后续（阶段4）**：Public Adapter API 打磨（增量补文档，沿用已有的
-`docs/integrating.md` + API 稳定性分级）——未开始。
+**阶段4 Public Adapter API 打磨（2026-07-04，已 ship，331 绿）**：动手一查就发现
+阶段1-3做的 trace/replay 能力有个真实缺口——`serializeTrace`/`replayOutcome` 只在
+仓库内深导入能用，`src/index.ts` 压根没导出，对"让 Attest 更产品化"这个目标是
+空的（外部装 `attest-agent` 包的人根本用不到）。补上两个导出+`test/index.test.ts`
+守卫测试同步（这条测试就是为了让这类遗漏在 CI 红掉，不是静默存在）；
+`docs/integrating.md` 加"Trace export and outcome replay"一节，两个新符号入
+API 稳定性表（Settling 档）；README 的 Core concepts 表顺带补一行。build 产物
+核实过确实带上了这两个导出（`dist/index.js`/`dist/index.d.ts` grep 到）。
+
+**codex 十条工程成熟度建议、用户选定的四项（trace 产品化/bench runner CLI/public
+adapter API/replay-regression）至此全部 ship**（切片19 + 阶段2-4，2026-07-04 一天内
+完成，331 绿）。搁置未做：PolicyEngine（和"高危动作默认拒绝"红线张力未解，需要
+先单独设计"只能收紧不能放宽"的边界）、npm 拆包（项目还没发布过第一版，本末倒置）。
 
 **策略主动覆写修复 + 抽样复验（2026-07-04，`prompts.ts`，310 绿）**：补通用提示词原则——策略明确给出必须遵守的具体值/顺序时（区别于"禁止"），当任务规格主动落实。真模型抽样复验 4 题（265/270/275/272，DB 重灌）：265 policy_contradiction 违规消失、272（已满分）无回归；270/275 仍违规。细查 275：`hierarchy_resolution`（删前须先把 lead_source 改 Inactive）与同题 `is_sequence_match`（删除工作流须"开 Actions→点 Delete→点 OK"严格连续 3 步、不容插入其他步骤）**两条策略结构性互斥**——插入改状态步骤就破坏"连续 3 步"，不插入就违反 hierarchy_resolution，疑似同 235/59/74 已知的"评测器判据自相矛盾"陷阱模式，非模型能力缺陷；270 任务本身缺失必要参数（CSV 路径）语义含糊。**诚实结论：有实测正向效果、非全面解决**，残余更像评测器判据冲突而非可再修的能力缺口，不追加代码强凑（§二·五）。
 
