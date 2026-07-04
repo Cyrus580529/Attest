@@ -7,7 +7,7 @@ import type { WorldModel } from '../memory/worldModel';
 /** agent 运行时逐个 yield 的步骤——读循环与程序循环共用的可观察词汇。 */
 export type AgentStep =
   | { type: 'observation'; tool: string; refId?: string; result: string }
-  | { type: 'action'; tool: string; refId: string; verified: boolean; evidence: string[] }
+  | { type: 'action'; tool: string; refId: string; verified: boolean; evidence: string[]; args?: Record<string, unknown> }
   | { type: 'held'; tool: string; refId: string; intent: Intent }
   | { type: 'cancelled'; tool: string; refId: string; reason: string }
   | { type: 'replay'; tool: string; refId?: string }

@@ -153,8 +153,9 @@ export async function executeWrite(
     await new Promise((r) => setTimeout(r, delay));
     evidence = diffSnapshots(preExec, host.snapshot());
   }
+  const callArgs: Record<string, unknown> | undefined = req.tool === 'setControl' ? { value: req.value } : req.args;
   ledger.record({ kind: 'write', tool: req.tool, refId: req.refId, verified: evidence.changed, evidence: evidence.details, navLike });
-  steps.push({ type: 'action', tool: req.tool, refId: req.refId, verified: evidence.changed, evidence: evidence.details });
+  steps.push({ type: 'action', tool: req.tool, refId: req.refId, verified: evidence.changed, evidence: evidence.details, args: callArgs });
 
   // 表单打开信号（复用 diff 事实、非提示词）：一次写让多个输入字段涌现=多半打开了表单/对话框。
   // 治"点开表单就以为做完"的早退——机制级提醒模型：填必填项、提交、看到结果态才算完成。

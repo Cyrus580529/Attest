@@ -55,6 +55,19 @@ describe('executeWrite', () => {
     expect(saveEntry?.navLike).toBeFalsy();
   });
 
+  it('AgentStep 的 action 步骤带上调用参数（setControl 是填的值，invokeAction 是 args）', async () => {
+    const before = makeSnap(`<input data-agent-control="qty" value="0"/>`);
+    const after = makeSnap(`<input data-agent-control="qty" value="5"/>`);
+    const host = new FakeHostAdapter(before, { 'control:qty': after });
+    const r = await executeWrite(host, new Ledger(), DENY, new Set(), {
+      tool: 'setControl',
+      refId: 'control:qty',
+      value: '5',
+    });
+    const step = r.steps.find((s) => s.type === 'action') as { args?: Record<string, unknown> } | undefined;
+    expect(step?.args).toEqual({ value: '5' });
+  });
+
   it('写动作打开表单（多个输入字段出现）→ 工具结果提示"填完再提交、别就此完成"', async () => {
     // 点一个动作后，页面冒出一排空控件=打开了表单——治"开表单即假报完成"的早退
     const before = makeSnap(`<button data-agent-action="new">新建</button>`);
