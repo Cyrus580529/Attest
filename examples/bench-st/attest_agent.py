@@ -48,6 +48,7 @@ def slim_obs(obs):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--task", type=int, required=True)
+    ap.add_argument("--trace-path", type=str, default=None, help="落盘 trace.jsonl 的路径（可选）")
     args = ap.parse_args()
 
     action_set = HighLevelActionSet(
@@ -61,10 +62,13 @@ def main():
     obs, info = env.reset()
     policies = format_policy_context(obs.get("policies", []))
 
+    node_env = dict(os.environ)
+    if args.trace_path:
+        node_env["ATTEST_TRACE_PATH"] = args.trace_path
     node = subprocess.Popen(
         ["npx", "tsx", str(ATTEST_REPO / "examples/bench-st/bridge.ts")],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=sys.stderr,
-        cwd=str(ATTEST_REPO), text=True, encoding="utf-8", shell=(os.name == "nt"),
+        cwd=str(ATTEST_REPO), text=True, encoding="utf-8", shell=(os.name == "nt"), env=node_env,
     )
 
     def send(msg):
@@ -108,6 +112,8 @@ def main():
     print(f"[attest] task={args.task} CR={cr} CuP={cup} violations={len(violations)}")
     for v in violations:
         print(f"  - {v.get('description', v)}")
+    # 机器可读的一行 JSON——bench_runner.py 靠这行聚合，不去 regex 解析上面的人读 dict repr。
+    print(f"[attest-json] {json.dumps({'task': args.task, 'cr': cr, 'cup': cup, 'violations': violations}, default=str)}")
     try:
         node.stdin.close()
         node.wait(timeout=30)
