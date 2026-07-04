@@ -33,6 +33,8 @@ export interface ActionNode {
   readonly label: string;
   readonly risk: Risk;
   readonly provenance?: Provenance;
+  /** 语义分类：'nav' = 导航/切视图类动作（模块链接、tab），不代表任务真正要求的变更。 */
+  readonly category?: 'nav';
   /** 可选：调用时需要的参数（VOIX 带参 tool）。无参动作省略。 */
   readonly params?: readonly ParamSpec[];
 }

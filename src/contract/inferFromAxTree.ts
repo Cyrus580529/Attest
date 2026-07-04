@@ -25,6 +25,7 @@ export interface AxTreeInferResult {
 const ACTION_ROLES = new Set(['button', 'link', 'menuitem', 'tab']);
 const CONTROL_ROLES = new Set(['textbox', 'searchbox', 'combobox', 'checkbox', 'radio', 'spinbutton', 'slider']);
 const OBJECT_ROLES = new Set(['listitem', 'row', 'article']);
+const NAV_ROLES = new Set(['navigation', 'menubar', 'tablist']);
 const SURFACE_ROLES = new Set(['status', 'alert', 'region']);
 const HIGH_RISK = /delete|remove|destroy|删除|删|清空|移除|pay|支付|purchase|checkout|confirm|确认|submit|提交|发送|send|save|保存/i;
 const MAX_LABEL = 80;
@@ -90,15 +91,16 @@ export function inferFromAxTree(nodes: AxNode[], url: string): AxTreeInferResult
   const NEARBY = 10;
   const looksLikeLabel = (s: string): boolean => /[a-zA-Z一-鿿]/.test(s);
 
-  const visit = (n: AxNode | undefined): void => {
+  const visit = (n: AxNode | undefined, insideNav = false): void => {
     if (!n || isPruned(n)) return; // hidden 整棵剪掉
     visitIdx += 1;
+    const role = clean(n.role?.value);
+    const nowInsideNav = insideNav || NAV_ROLES.has(role);
     if (n.ignored) {
       // CDP ignored：本节点不入树但子树照常——只下钻，不参与分类
-      for (const cid of n.childIds ?? []) visit(byId.get(cid));
+      for (const cid of n.childIds ?? []) visit(byId.get(cid), nowInsideNav);
       return;
     }
-    const role = clean(n.role?.value);
     const name = clean(n.name?.value);
     if (role === 'StaticText' && name && name.length <= 40 && looksLikeLabel(name)) lastText = { text: name, at: visitIdx };
 
@@ -108,7 +110,9 @@ export function inferFromAxTree(nodes: AxNode[], url: string): AxTreeInferResult
         seenAction.add(label);
         const risk: Risk = HIGH_RISK.test(label) ? 'high' : 'low';
         const ref = minter.mint('action', label);
-        actions.push({ ref, name: label, label, risk, provenance: 'inferred' });
+        // nav 归因：role=tab 一律视为导航；否则看是否身处导航地标（navigation/menubar/tablist）内。
+        const category: 'nav' | undefined = role === 'tab' || nowInsideNav ? 'nav' : undefined;
+        actions.push({ ref, name: label, label, risk, provenance: 'inferred', category });
         bids.set(ref.id, n.browsergym_id);
       }
     } else if (CONTROL_ROLES.has(role) && n.browsergym_id) {
@@ -135,7 +139,8 @@ export function inferFromAxTree(nodes: AxNode[], url: string): AxTreeInferResult
           if (!seenAction.has(label)) {
             seenAction.add(label);
             const ref = minter.mint('action', label);
-            actions.push({ ref, name: label, label, risk: HIGH_RISK.test(label) ? 'high' : 'low', provenance: 'inferred' });
+            const category: 'nav' | undefined = clean(first.role?.value) === 'tab' || nowInsideNav ? 'nav' : undefined;
+            actions.push({ ref, name: label, label, risk: HIGH_RISK.test(label) ? 'high' : 'low', provenance: 'inferred', category });
             bids.set(ref.id, first.browsergym_id!);
           }
           return;
@@ -144,7 +149,7 @@ export function inferFromAxTree(nodes: AxNode[], url: string): AxTreeInferResult
         // 是展开的菜单/导航组不是数据行。吞成对象会藏掉全部菜单项，且对象主链接=组名
         // （如 More），点了反把菜单关上（真实 More 菜单实测）。下钻让每项自成 action。
         if (links.length >= 2 && norm(links.map((l) => textOf(l, byId)).join(' ')) === norm(raw)) {
-          for (const cid of n.childIds ?? []) visit(byId.get(cid));
+          for (const cid of n.childIds ?? []) visit(byId.get(cid), nowInsideNav);
           return;
         }
         oi += 1;
@@ -179,9 +184,9 @@ export function inferFromAxTree(nodes: AxNode[], url: string): AxTreeInferResult
       if (role !== 'tabpanel') return;
     }
 
-    for (const cid of n.childIds ?? []) visit(byId.get(cid));
+    for (const cid of n.childIds ?? []) visit(byId.get(cid), nowInsideNav);
   };
 
-  for (const r of roots) visit(r);
+  for (const r of roots) visit(r, false);
   return { snapshot: { url, objects, actions, controls, surfaces }, bids };
 }

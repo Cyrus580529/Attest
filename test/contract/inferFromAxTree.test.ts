@@ -265,4 +265,58 @@ describe('inferFromAxTree——BrowserGym AXTree → PageSnapshot', () => {
     expect(snapshot.actions.find((a) => a.label === 'Delete record')?.risk).toBe('high');
     expect(snapshot.actions.find((a) => a.label === '查看')?.risk).toBe('low');
   });
+
+  it('role=tab 一律打上 category:nav', () => {
+    const nodes: AxNode[] = [
+      N('1', 'RootWebArea', '', { childIds: ['2'] }),
+      N('2', 'tab', 'OVERVIEW', { browsergym_id: 't1' }),
+    ];
+    const { snapshot } = inferFromAxTree(nodes, '/p');
+    expect(snapshot.actions[0]?.category).toBe('nav');
+  });
+
+  it('link 身处 role=navigation 地标内 → category:nav；地标外的同类 link 不受影响', () => {
+    const nodes: AxNode[] = [
+      N('1', 'RootWebArea', '', { childIds: ['2', '5'] }),
+      N('2', 'navigation', '', { childIds: ['3'] }),
+      N('3', 'link', 'Accounts', { browsergym_id: 'n1' }),
+      N('5', 'link', '保存', { browsergym_id: 'n2' }),
+    ];
+    const { snapshot } = inferFromAxTree(nodes, '/p');
+    expect(snapshot.actions.find((a) => a.label === 'Accounts')?.category).toBe('nav');
+    expect(snapshot.actions.find((a) => a.label === '保存')?.category).toBeUndefined();
+  });
+
+  it('真实 AXTree：模块导航（Accounts/Contacts/Leads）打上 category:nav', async () => {
+    const { readFileSync } = await import('node:fs');
+    const nodes = JSON.parse(readFileSync('test/fixtures/real/ax-suitecrm-235.json', 'utf8')) as AxNode[];
+    const { snapshot } = inferFromAxTree(nodes, 'http://localhost:8080/');
+    for (const want of ['Accounts', 'Contacts', 'Leads']) {
+      expect(snapshot.actions.find((a) => a.label === want)?.category).toBe('nav');
+    }
+  });
+
+  it('真实夹具：MORE INFORMATION 等 tab 页签打上 category:nav', async () => {
+    const { readFileSync } = await import('node:fs');
+    const obs = JSON.parse(readFileSync('test/fixtures/real/ax-suitecrm-tab-moreinfo.json', 'utf8'));
+    const nodes = (obs.axtree_object?.nodes ?? obs.axtree_object) as AxNode[];
+    const { snapshot } = inferFromAxTree(nodes, obs.url as string);
+    expect(snapshot.actions.find((a) => a.label === 'OVERVIEW')?.category).toBe('nav');
+  });
+
+  it('真实夹具：Save 按钮不在导航地标内，不打 category', async () => {
+    const { readFileSync } = await import('node:fs');
+    const obs = JSON.parse(readFileSync('test/fixtures/real/ax-suitecrm-editform.json', 'utf8'));
+    const nodes = (obs.axtree_object?.nodes ?? obs.axtree_object) as AxNode[];
+    const { snapshot } = inferFromAxTree(nodes, obs.url);
+    expect(snapshot.actions.find((a) => a.label === 'Save')?.category).toBeUndefined();
+  });
+
+  it('真实夹具：More 菜单展开后的 Tasks（仍是模块切换）打上 category:nav', async () => {
+    const { readFileSync } = await import('node:fs');
+    const obs = JSON.parse(readFileSync('test/fixtures/real/ax-suitecrm-nav-more-open.json', 'utf8'));
+    const nodes = (obs.axtree_object?.nodes ?? obs.axtree_object) as AxNode[];
+    const { snapshot } = inferFromAxTree(nodes, obs.url as string);
+    expect(snapshot.actions.find((a) => a.label === 'Tasks')?.category).toBe('nav');
+  });
 });
