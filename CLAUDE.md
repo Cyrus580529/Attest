@@ -140,9 +140,23 @@ violations 结构化输出，runner 不用再 regex 解析人读 dict repr）。
 outcome，但这是"nav 归因不完美"的一个具体例子，比空泛地说"覆盖边界"更实——留作
 后续用真实夹具打磨 `insideNav` 判定（比如把动态注入的 typeahead 下拉排除在外）。
 
-**排期后续（阶段3-4）**：Replay/Regression（吃 trace.jsonl、用
-FakeLlmAdapter/FakeHostAdapter 重放）、Public Adapter API 打磨（增量补文档，沿用
-已有的 `docs/integrating.md` + API 稳定性分级）——均未开始。
+**阶段3 Replay/Regression（2026-07-04，已 ship，331 绿）**：动手前先做了一次范围
+核对——trace.jsonl 阶段1故意只记结构化关键字段，不留完整 LLM 消息/页面快照，所以
+"完整重现整个 agent 行为"（重跑 LLM+host 验证每一步是否和录制时一致）现在技术上
+不可行，若要支持得推翻阶段1"不留快照"的决定。改做真实可行且直接命中今天痛点的
+范围：`src/core/replay.ts` 的 `replayOutcome`——每份 trace 的 finish 事件里已经
+完整存了账本（ledger 数组），拿它用**当前代码**重跑 `computeOutcome`，和录制时的
+outcome 对比，检测一次代码改动是否让历史 trace 的判定结果变了；不重跑任何
+LLM/host 调用，零 API 成本。`examples/bench-st/replayCheck.ts` 是批量 CLI（吃一个
+trace 目录，报告 mismatch）。**冒烟验证**：构造了一份模拟"旧代码录的 nav-only-write
+→completed"的真实格式 trace，重跑后正确报出 `completed→failed` 的 mismatch，
+命中的正是本次会话切片19 nav 归因修复要处理的那类场景——证明这个工具将来能在
+"改了 computeOutcome/nav 归因逻辑后，历史 trace 的判定会不会变"这个真实问题上
+派上用场。**已知边界**：只测 outcome 判定层面的回归，测不出 ref 解析/模型决策层
+面的行为漂移（那需要完整重现，超出 trace 格式现有能力）。
+
+**排期后续（阶段4）**：Public Adapter API 打磨（增量补文档，沿用已有的
+`docs/integrating.md` + API 稳定性分级）——未开始。
 
 **策略主动覆写修复 + 抽样复验（2026-07-04，`prompts.ts`，310 绿）**：补通用提示词原则——策略明确给出必须遵守的具体值/顺序时（区别于"禁止"），当任务规格主动落实。真模型抽样复验 4 题（265/270/275/272，DB 重灌）：265 policy_contradiction 违规消失、272（已满分）无回归；270/275 仍违规。细查 275：`hierarchy_resolution`（删前须先把 lead_source 改 Inactive）与同题 `is_sequence_match`（删除工作流须"开 Actions→点 Delete→点 OK"严格连续 3 步、不容插入其他步骤）**两条策略结构性互斥**——插入改状态步骤就破坏"连续 3 步"，不插入就违反 hierarchy_resolution，疑似同 235/59/74 已知的"评测器判据自相矛盾"陷阱模式，非模型能力缺陷；270 任务本身缺失必要参数（CSV 路径）语义含糊。**诚实结论：有实测正向效果、非全面解决**，残余更像评测器判据冲突而非可再修的能力缺口，不追加代码强凑（§二·五）。
 
