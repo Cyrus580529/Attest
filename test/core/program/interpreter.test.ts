@@ -240,4 +240,46 @@ describe('ProgramInterpreter', () => {
     expect(ret.aborted).toBe(true);
     expect(computeOutcome(ledger.entries)).toBe('failed');
   });
+
+  // 观察文本里 surface/control/action 都是"ref id — 裸名字"并列展示（如 `surface surface:detail — detail`），
+  // DSL 本意要裸名字，但模型完全可能合理地填带前缀的 ref id（真模型抽样就抓到过：GPT-5.5 在 read{surface}
+  // 上就这么填过，直接被拒）。四个节点类型统一放宽成两种写法都认，不只是"read"这一处。
+  it('read{surface} 也认全 ref id（不止裸名字）', async () => {
+    const host = new FakeHostAdapter(makeSnap(BOARD));
+    const program: Program = { body: [{ op: 'read', surface: 'surface:detail' }] };
+    const { steps } = await drain(runProgram(program, { host, ledger: new Ledger(), confirm: DENY }));
+    expect(steps.some((s) => s.type === 'observation' && s.tool === 'readSurface')).toBe(true);
+    expect(steps.some((s) => s.type === 'error')).toBe(false);
+  });
+
+  it('if{cond.surface} 也认全 ref id', async () => {
+    const host = new FakeHostAdapter(makeSnap(BOARD));
+    const program: Program = {
+      body: [{ op: 'if', cond: { surface: 'surface:detail', contains: '选择' }, then: [{ op: 'observe' }] }],
+    };
+    const { steps } = await drain(runProgram(program, { host, ledger: new Ledger(), confirm: DENY }));
+    expect(steps.some((s) => s.type === 'observation')).toBe(true); // 命中 then 分支才会有 observe
+  });
+
+  it('setControl{on:{control}} 也认全 ref id', async () => {
+    const before = makeSnap(`<input data-agent-control="qty" value="0"/>`);
+    const after = makeSnap(`<input data-agent-control="qty" value="5"/>`);
+    const host = new FakeHostAdapter(before, { 'control:qty': after });
+    const program: Program = {
+      body: [{ op: 'setControl', on: { control: 'control:qty' }, value: '5' }, { op: 'finish', answer: 'ok' }],
+    };
+    const { steps, ret } = await drain(runProgram(program, { host, ledger: new Ledger(), confirm: DENY }));
+    expect(steps.some((s) => s.type === 'action' && s.verified)).toBe(true);
+    expect(ret.aborted).toBe(false);
+  });
+
+  it('invoke{action} 也认全 ref id', async () => {
+    const before = makeSnap(`<button data-agent-action="go">Go</button><input data-agent-control="c" value="0"/>`);
+    const after = makeSnap(`<button data-agent-action="go">Go</button><input data-agent-control="c" value="9"/>`);
+    const host = new FakeHostAdapter(before, { 'action:go': after });
+    const program: Program = { body: [{ op: 'invoke', action: 'action:go' }, { op: 'finish', answer: 'ok' }] };
+    const { steps, ret } = await drain(runProgram(program, { host, ledger: new Ledger(), confirm: APPROVE_ONCE }));
+    expect(steps.some((s) => s.type === 'action' && s.verified)).toBe(true);
+    expect(ret.aborted).toBe(false);
+  });
 });

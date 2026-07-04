@@ -49,8 +49,18 @@ export async function* runProgram(
       .map((o) => o.ref.id);
   }
 
+  /** DSL 本意是裸名字（如 "detail"/"resolve"），但观察文本把 ref id 和裸名字并列展示
+   * （`surface surface:detail — detail：…`），模型完全可能合理地填带前缀的那个——真模型抽样
+   * 就抓到过（GPT-5.5 在 read{surface} 上填了 "surface:detail"，被拒）。两种写法都认。 */
+  function byNameOrRefId<T extends { name: string; ref: { id: string } }>(
+    items: readonly T[],
+    value: string,
+  ): T | undefined {
+    return items.find((i) => i.name === value || i.ref.id === value);
+  }
+
   function evalCond(snap: PageSnapshot, c: Cond): boolean {
-    const surf = snap.surfaces.find((s) => s.name === c.surface);
+    const surf = byNameOrRefId(snap.surfaces, c.surface);
     return surf ? surf.text.includes(c.contains) : false;
   }
 
@@ -147,7 +157,7 @@ export async function* runProgram(
         return 'continue';
       }
       case 'read': {
-        const surf = host.snapshot().surfaces.find((s) => s.name === node.surface);
+        const surf = byNameOrRefId(host.snapshot().surfaces, node.surface);
         if (!surf) return yield* fail('read', `surface 未找到: ${node.surface}`);
         const text = host.readSurface(surf.ref);
         ledger.record({ kind: 'observe', tool: 'readSurface', detail: text });
@@ -155,12 +165,12 @@ export async function* runProgram(
         return 'continue';
       }
       case 'setControl': {
-        const ctrl = host.snapshot().controls.find((c) => c.name === node.on.control);
+        const ctrl = byNameOrRefId(host.snapshot().controls, node.on.control);
         if (!ctrl) return yield* fail('setControl', `control 未找到: ${node.on.control}`);
         return yield* runWrite('setControl', { tool: 'setControl', refId: ctrl.ref.id, value: node.value }, node.predict);
       }
       case 'invoke': {
-        const action = host.snapshot().actions.find((a) => a.name === node.action);
+        const action = byNameOrRefId(host.snapshot().actions, node.action);
         if (!action) return yield* fail('invoke', `action 未找到: ${node.action}`);
         return yield* runWrite(
           'invoke',
