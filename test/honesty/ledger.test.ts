@@ -72,6 +72,30 @@ describe('computeOutcome', () => {
     ).toBe('completed');
   });
 
+  it('askUser 提问未获回复、其后无验证写（卡在等澄清）→ failed，不得 completed', () => {
+    // 场景：任务需要写操作，模型正确地用 askUser 提问，但非交互宿主/用户未答复，
+    // 模型没有继续执行任何写就直接 finish——空账本此前会默认 completed，
+    // 但"卡在等澄清"不等于"任务完成"，与写 error/未验证写同形处理。
+    expect(
+      computeOutcome([{ kind: 'clarify', question: '删除前是否需要备份？', answered: false }]),
+    ).toBe('failed');
+  });
+
+  it('askUser 未获回复但其后有验证写（已恢复，模型用给定值继续完成）→ completed', () => {
+    expect(
+      computeOutcome([
+        { kind: 'clarify', question: '文件名？', answered: false },
+        { kind: 'write', tool: 'setControl', refId: 'a', verified: true, evidence: ['c'] },
+      ]),
+    ).toBe('completed');
+  });
+
+  it('askUser 提问获得回复 → 不算悬而未决，completed', () => {
+    expect(
+      computeOutcome([{ kind: 'clarify', question: '文件名？', answered: true }]),
+    ).toBe('completed');
+  });
+
   it('高危被拒且无成功写 → cancelled', () => {
     expect(
       computeOutcome([
